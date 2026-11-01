@@ -4,16 +4,17 @@ services:
     container_name: forsaken_mail
     restart: always
     ports:
-      - "25:25"       # Direct Inbound SMTP Mail Server
+      - "25:25"       # Direct Inbound Port 25 SMTP Gateway
       - "80:3000"     # Standard Web Dashboard (HTTP)
-      - "3000:3000"   # Alternative Dashboard Port
+      - "443:3001"    # Secure Web Dashboard (HTTPS)
+      - "3000:3000"   # Alternative Port
+    env_file:
+      - .env
     environment:
-      - DOMAINS=${DOMAINS:-rizzcord.site,mail.rizzcord.site}
       - PORT=3000
+      - HTTPS_PORT=3001
       - SMTP_PORT=25
       - DATA_DIR=/app/data
-      - RETENTION_HOURS=${RETENTION_HOURS:-240}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-cyberadmin2026}
     volumes:
       - ./data:/app/data
 

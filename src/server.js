@@ -1,11 +1,13 @@
 import express from 'express';
 import http from 'http';
+import https from 'https';
+import fs from 'fs';
 import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { fileURLToPath } from 'url';
-import { HTTP_PORT, OWNER_IDS, DISCORD_CLIENT_ID } from './config.js';
+import { HTTP_PORT, HTTPS_PORT, FORCE_HTTPS, SSL_KEY_PATH, SSL_CERT_PATH, OWNER_IDS, DISCORD_CLIENT_ID } from './config.js';
 import {
   saveMailbox,
   getMailboxDetails,
@@ -59,6 +61,19 @@ app.use((req, res, next) => {
   next();
 });
 
+// Automatic HTTPS Redirect (Cloudflare / Proxies / Direct)
+if (FORCE_HTTPS) {
+  app.use((req, res, next) => {
+    const proto = req.headers['x-forwarded-proto'] || (req.secure ? 'https' : 'http');
+    const host = req.headers.host || '';
+    if (proto !== 'https' && !host.startsWith('localhost') && !host.startsWith('127.0.0.1')) {
+      const cleanHost = host.replace(/:\d+$/, '');
+      return res.redirect(301, `https://${cleanHost}${req.url}`);
+    }
+    next();
+  });
+}
+
 app.use(express.static(publicDir));
 
 const server = http.createServer(app);
@@ -67,52 +82,56 @@ const wss = new WebSocketServer({ server });
 // Map of address -> Set of active WebSockets
 const subscribers = new Map();
 
-wss.on('connection', (ws, req) => {
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  let currentAddress = url.searchParams.get('address')?.toLowerCase().trim() || null;
+function setupWebSocketServer(wssInstance) {
+  wssInstance.on('connection', (ws, req) => {
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    let currentAddress = url.searchParams.get('address')?.toLowerCase().trim() || null;
 
-  function subscribe(addr) {
-    if (!addr) return;
-    const clean = addr.toLowerCase().trim();
-    if (!subscribers.has(clean)) {
-      subscribers.set(clean, new Set());
+    function subscribe(addr) {
+      if (!addr) return;
+      const clean = addr.toLowerCase().trim();
+      if (!subscribers.has(clean)) {
+        subscribers.set(clean, new Set());
+      }
+      subscribers.get(clean).add(ws);
+      currentAddress = clean;
+      ws.send(JSON.stringify({ type: 'subscribed', address: clean }));
     }
-    subscribers.get(clean).add(ws);
-    currentAddress = clean;
-    ws.send(JSON.stringify({ type: 'subscribed', address: clean }));
-  }
 
-  function unsubscribe() {
-    if (currentAddress && subscribers.has(currentAddress)) {
-      subscribers.get(currentAddress).delete(ws);
-      if (subscribers.get(currentAddress).size === 0) {
-        subscribers.delete(currentAddress);
+    function unsubscribe() {
+      if (currentAddress && subscribers.has(currentAddress)) {
+        subscribers.get(currentAddress).delete(ws);
+        if (subscribers.get(currentAddress).size === 0) {
+          subscribers.delete(currentAddress);
+        }
       }
     }
-  }
 
-  if (currentAddress) {
-    subscribe(currentAddress);
-  }
-
-  ws.on('message', (data) => {
-    try {
-      const msg = JSON.parse(data.toString());
-      if (msg.action === 'subscribe' && msg.address) {
-        unsubscribe();
-        subscribe(msg.address);
-      } else if (msg.action === 'ping') {
-        ws.send(JSON.stringify({ type: 'pong' }));
-      }
-    } catch {
-      // Ignore invalid JSON
+    if (currentAddress) {
+      subscribe(currentAddress);
     }
-  });
 
-  ws.on('close', () => {
-    unsubscribe();
+    ws.on('message', (data) => {
+      try {
+        const msg = JSON.parse(data.toString());
+        if (msg.action === 'subscribe' && msg.address) {
+          unsubscribe();
+          subscribe(msg.address);
+        } else if (msg.action === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }));
+        }
+      } catch {
+        // Ignore invalid JSON
+      }
+    });
+
+    ws.on('close', () => {
+      unsubscribe();
+    });
   });
-});
+}
+
+setupWebSocketServer(wss);
 
 // Broadcast incoming email to connected WebSocket clients
 setBroadcastCallback((address, payload) => {
@@ -673,8 +692,27 @@ server.listen(HTTP_PORT, '0.0.0.0', () => {
   console.log(`❄️ Preservation State:   Active after 24h (Zero deletions, Cold compression)`);
   console.log(`🔒 Discord OAuth & Owner: Enforced (Owner IDs: ${OWNER_IDS.length ? OWNER_IDS.join(', ') : 'None configured yet in .env'})`);
   console.log(`🛡️ IP Shielding:        ACTIVE (All server & header IPs masked)`);
+  console.log(`🌐 Web Dashboard:       http://0.0.0.0:${HTTP_PORT} (Force HTTPS: ${FORCE_HTTPS ? 'ON' : 'OFF'})`);
   console.log(`================================================================\n`);
 });
+
+// Optional Native HTTPS Server (when SSL certificate files are provided)
+if (fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
+  try {
+    const sslOptions = {
+      key: fs.readFileSync(SSL_KEY_PATH),
+      cert: fs.readFileSync(SSL_CERT_PATH),
+    };
+    const httpsServer = https.createServer(sslOptions, app);
+    const httpsWss = new WebSocketServer({ server: httpsServer });
+    setupWebSocketServer(httpsWss);
+    httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
+      console.log(`🔒 [HTTPS Server] Secure Web Dashboard active on port ${HTTPS_PORT}`);
+    });
+  } catch (err) {
+    console.warn('⚠️ Native HTTPS startup skipped:', err.message);
+  }
+}
 
 // Start Inbound SMTP Server on Port 25
 startSmtpServer();

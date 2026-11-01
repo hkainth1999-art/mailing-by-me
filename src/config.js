@@ -29,6 +29,11 @@ export const OWNER_IDS = rawOwnerIds
   .filter(Boolean);
 
 // Cryptographic Secret for signing tokens and cookies
+export const FORCE_HTTPS = process.env.FORCE_HTTPS === 'true';
+export const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || '3001', 10);
+export const SSL_KEY_PATH = process.env.SSL_KEY_PATH || path.join(DATA_DIR, 'certs', 'privkey.pem');
+export const SSL_CERT_PATH = process.env.SSL_CERT_PATH || path.join(DATA_DIR, 'certs', 'fullchain.pem');
+
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
