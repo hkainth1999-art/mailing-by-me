@@ -213,11 +213,20 @@ app.get('/api/auth/discord', (req, res) => {
   if (!DISCORD_CLIENT_ID) {
     return res.json({
       configured: false,
-      message: 'Discord OAuth credentials not set in .env. Use Direct Discord ID login.',
+      message: 'Discord OAuth credentials not set in .env.',
     });
   }
   const url = getDiscordAuthUrl(req);
   res.json({ configured: true, url });
+});
+
+// Direct Discord OAuth redirect trigger
+app.get('/api/auth/discord/login', (req, res) => {
+  const url = getDiscordAuthUrl(req);
+  if (!url) {
+    return res.status(500).send('Discord Client ID is not configured in .env. Please check DISCORD_CLIENT_ID.');
+  }
+  res.redirect(url);
 });
 
 // 2. Discord OAuth Callback
