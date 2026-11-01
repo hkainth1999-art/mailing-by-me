@@ -1,0 +1,15 @@
+node_modules
+*/node_modules
+.git
+.github
+.env
+.env.*
+!.env.example
+dist
+*/dist
+build
+*/build
+*.log
+uploads
+docker/uploads
+

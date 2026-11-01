@@ -1,0 +1,20 @@
+services:
+  forsaken-mail:
+    build: .
+    container_name: forsaken_mail
+    restart: always
+    ports:
+      - "25:25"       # Direct Inbound SMTP Mail Server
+      - "80:3000"     # Standard Web Dashboard (HTTP)
+      - "3000:3000"   # Alternative Dashboard Port
+    environment:
+      - DOMAINS=${DOMAINS:-rizzcord.site,mail.rizzcord.site}
+      - PORT=3000
+      - SMTP_PORT=25
+      - DATA_DIR=/app/data
+      - RETENTION_HOURS=48
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  mail_data:
