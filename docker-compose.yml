@@ -4,15 +4,12 @@ services:
     container_name: forsaken_mail
     restart: always
     ports:
-      - "25:25"       # Direct Inbound Port 25 SMTP Gateway
-      - "80:3000"     # Standard Web Dashboard (HTTP)
-      - "443:3001"    # Secure Web Dashboard (HTTPS)
-      - "3000:3000"   # Alternative Port
+      - "25:25"                 # Direct Inbound Port 25 SMTP Gateway (mail.rizzcord.site)
+      - "127.0.0.1:3000:3000"   # Web Dashboard internal port (Proxied securely by Nginx)
     env_file:
       - .env
     environment:
       - PORT=3000
-      - HTTPS_PORT=3001
       - SMTP_PORT=25
       - DATA_DIR=/app/data
     volumes:

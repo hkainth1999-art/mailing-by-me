@@ -254,41 +254,7 @@ app.get('/api/auth/discord/callback', async (req, res) => {
   }
 });
 
-// 3. Direct Discord Login (Self-Hosted & Dev Mode when OAuth app is not configured)
-app.post('/api/auth/dev-login', (req, res) => {
-  const { discordId, username } = req.body;
-  if (!discordId || typeof discordId !== 'string') {
-    return res.status(400).json({ error: 'Discord User ID is required' });
-  }
-
-  const cleanId = discordId.trim();
-  const cleanUsername = (username || `User_${cleanId.slice(-4)}`).trim();
-
-  const session = createDiscordSession({
-    id: cleanId,
-    username: cleanUsername,
-    global_name: cleanUsername,
-    avatar: '',
-  });
-
-  res.cookie('discord_session', session.token, {
-    httpOnly: true,
-    secure: req.protocol === 'https',
-    sameSite: 'lax',
-    maxAge: 30 * 24 * 3600 * 1000,
-  });
-
-  res.json({
-    success: true,
-    user: {
-      id: cleanId,
-      username: cleanUsername,
-      isOwner: Boolean(session.is_owner),
-    },
-  });
-});
-
-// 4. Current User Profile
+// 3. Current User Profile
 app.get('/api/auth/me', (req, res) => {
   const session = getAuthSession(req);
   if (!session) {

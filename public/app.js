@@ -89,6 +89,8 @@ const userUsernameText = document.getElementById('userUsernameText');
 const userRoleBadge = document.getElementById('userRoleBadge');
 const discordLogoutBtn = document.getElementById('discordLogoutBtn');
 const openAdminBtn = document.getElementById('openAdminBtn');
+const adminQuickBar = document.getElementById('adminQuickBar');
+const adminQuickBarBtn = document.getElementById('adminQuickBarBtn');
 
 const pasteInboxForm = document.getElementById('pasteInboxForm');
 const pasteInboxInput = document.getElementById('pasteInboxInput');
@@ -156,9 +158,6 @@ const viewTabs = document.querySelectorAll('.view-tab');
 const discordAuthModal = document.getElementById('discordAuthModal');
 const closeDiscordAuthModalBtn = document.getElementById('closeDiscordAuthModalBtn');
 const discordOAuthBtnLink = document.getElementById('discordOAuthBtnLink');
-const devLoginForm = document.getElementById('devLoginForm');
-const devDiscordIdInput = document.getElementById('devDiscordIdInput');
-const devUsernameInput = document.getElementById('devUsernameInput');
 
 const adminModal = document.getElementById('adminModal');
 const closeAdminModalBtn = document.getElementById('closeAdminModalBtn');
@@ -419,9 +418,16 @@ async function checkDiscordAuth() {
       if (data.user.isOwner) {
         userRoleBadge.classList.remove('hidden');
         openAdminBtn.classList.remove('hidden');
+        if (adminQuickBar) adminQuickBar.classList.remove('hidden');
+
+        // Automatically open Admin Panel if URL points to #admin or has ?admin
+        if (window.location.hash === '#admin' || window.location.pathname.startsWith('/admin') || window.location.search.includes('admin')) {
+          openAdminPanelModal();
+        }
       } else {
         userRoleBadge.classList.add('hidden');
         openAdminBtn.classList.add('hidden');
+        if (adminQuickBar) adminQuickBar.classList.add('hidden');
       }
 
       // Show user created inboxes tab
@@ -433,6 +439,7 @@ async function checkDiscordAuth() {
       discordLoginBtn.classList.remove('hidden');
       discordUserPill.classList.add('hidden');
       openAdminBtn.classList.add('hidden');
+      if (adminQuickBar) adminQuickBar.classList.add('hidden');
       userInboxesTabContainer.classList.add('hidden');
 
       // Setup Discord OAuth link if configured
@@ -496,8 +503,12 @@ discordLogoutBtn.addEventListener('click', async () => {
   window.location.reload();
 });
 
-// Prompt Discord Auth Modal
+// Prompt Discord Auth
 function promptDiscordLogin() {
+  if (discordOAuthBtnLink && discordOAuthBtnLink.href && !discordOAuthBtnLink.href.endsWith('#') && !discordOAuthBtnLink.href.includes('undefined')) {
+    window.location.href = discordOAuthBtnLink.href;
+    return;
+  }
   discordAuthModal.classList.remove('hidden');
 }
 
@@ -506,31 +517,6 @@ bannerLoginBtn.addEventListener('click', promptDiscordLogin);
 
 closeDiscordAuthModalBtn.addEventListener('click', () => {
   discordAuthModal.classList.add('hidden');
-});
-
-// Dev Direct Discord Login
-devLoginForm.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const discordId = devDiscordIdInput.value.trim();
-  const username = devUsernameInput.value.trim();
-  if (!discordId) return;
-
-  try {
-    const res = await fetch('/api/auth/dev-login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ discordId, username }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      discordAuthModal.classList.add('hidden');
-      await checkDiscordAuth();
-    } else {
-      alert(data.error || 'Login failed');
-    }
-  } catch (err) {
-    alert('Failed to connect to server');
-  }
 });
 
 // ==============================================================================
@@ -1098,12 +1084,20 @@ closeQrModalBtn.addEventListener('click', () => {
 // 6. ADMIN CONTROL VAULT (OWNER ACCESS, MULTI-DOMAIN, COLD STATS)
 // ==============================================================================
 
-openAdminBtn.addEventListener('click', () => {
-  adminModal.classList.remove('hidden');
-  loadAdminDomains();
-  loadAdminStats();
-  loadAdminKeys();
-});
+function openAdminPanelModal() {
+  if (currentUser?.user?.isOwner) {
+    adminModal.classList.remove('hidden');
+    loadAdminDomains();
+    loadAdminStats();
+    loadAdminKeys();
+  } else {
+    alert('Admin Panel is restricted to authorized Discord Vault Owners.');
+  }
+}
+
+if (openAdminBtn) openAdminBtn.addEventListener('click', openAdminPanelModal);
+if (userRoleBadge) userRoleBadge.addEventListener('click', openAdminPanelModal);
+if (adminQuickBarBtn) adminQuickBarBtn.addEventListener('click', openAdminPanelModal);
 
 closeAdminModalBtn.addEventListener('click', () => {
   adminModal.classList.add('hidden');
