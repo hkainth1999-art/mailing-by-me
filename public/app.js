@@ -12,7 +12,32 @@ let soundEnabled = localStorage.getItem('crown_sound') !== 'false';
 let currentUser = null; // { loggedIn: false, user: null }
 let ws = null;
 let wsHeartbeat = null;
-let recentMailboxes = JSON.parse(localStorage.getItem('crown_recent_mailboxes') || '[]');
+let recentMailboxes = [];
+
+// Cleanse any legacy or 'cyber' addresses from localStorage immediately
+function purgeLegacyCyberStorage() {
+  try {
+    localStorage.removeItem('cyber_recent_mailboxes');
+    localStorage.removeItem('cyber_admin_token');
+    localStorage.removeItem('cyber_sound');
+  } catch {}
+
+  try {
+    const raw = localStorage.getItem('crown_recent_mailboxes');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        recentMailboxes = parsed.filter(
+          (addr) => typeof addr === 'string' && addr.includes('@') && !addr.toLowerCase().includes('cyber')
+        );
+      }
+    }
+    localStorage.setItem('crown_recent_mailboxes', JSON.stringify(recentMailboxes));
+  } catch {
+    recentMailboxes = [];
+  }
+}
+purgeLegacyCyberStorage();
 
 // Web Audio API Synthesizer (Chime)
 let audioCtx = null;
@@ -176,29 +201,111 @@ const qrCanvas = document.getElementById('qrCanvas');
 const qrAddressText = document.getElementById('qrAddressText');
 
 // ==============================================================================
-// 1. PROPER ALPHABET NAME GENERATOR (No 'cyber' prefix, clean natural words)
+// 1. RANDOM NAME & ALPHABET NUMBER GENERATOR (NO 'cyber' ANYWHERE)
 // ==============================================================================
 
-const PROPER_NAME_PREFIXES = [
+// Natural Human First Names
+const FIRST_NAMES = [
+  'alex', 'sarah', 'david', 'oliver', 'emma', 'lucas', 'marcus', 'liam', 'noah',
+  'ethan', 'chloe', 'ryan', 'leo', 'jordan', 'daniel', 'sophia', 'elena', 'jack',
+  'mason', 'clara', 'victor', 'arthur', 'felix', 'samuel', 'oscar', 'henry', 'eva',
+  'adam', 'ben', 'dylan', 'finn', 'ian', 'jake', 'kyle', 'luke', 'max', 'nate',
+  'owen', 'quinn', 'seth', 'troy', 'zane', 'maya', 'zoe', 'lily', 'nora', 'aria',
+  'mila', 'isla', 'harper', 'grace', 'carter', 'miles', 'cole', 'reid', 'blake'
+];
+
+// Natural Surnames
+const LAST_NAMES = [
+  'turner', 'miller', 'stone', 'reed', 'watson', 'gray', 'clark', 'bennett',
+  'morgan', 'davies', 'brooks', 'foster', 'hayes', 'vance', 'cole', 'wright',
+  'ward', 'bell', 'cooper', 'ross', 'parker', 'evans', 'wood', 'price', 'allen'
+];
+
+// Modern Alphabet & Mail Brand Words
+const ALPHABET_WORDS = [
   'crwnmail', 'crown', 'vortex', 'phantom', 'zenith', 'kronos', 'apex', 'pulse',
   'shadow', 'frost', 'astral', 'valkyrie', 'specter', 'storm', 'nexus', 'titan',
   'velocity', 'aurora', 'phoenix', 'solaris', 'echo', 'blade', 'flux', 'radiant',
   'noble', 'vector', 'prime', 'shield', 'falcon', 'drift', 'haven', 'cipher',
-  'krypton', 'hyper', 'alpha', 'omega', 'swift', 'nova', 'strider', 'temp'
+  'temp', 'nova', 'strider', 'alpha', 'omega', 'swift', 'krypton', 'hyper'
 ];
 
-const PROPER_NAME_SUFFIXES = [
-  '24', '77', '88', '99', '42', '12', '7', '33', '55', '01', 'pro', 'hub', 'mail', 'box', 'lab', 'net'
-];
+// Multi-style generator based on human names, alphabet, and numbers
+function generateRandomMailboxName() {
+  const mode = Math.floor(Math.random() * 4);
+  let name = '';
 
-function generateProperAlphabetMailbox() {
-  const prefix = PROPER_NAME_PREFIXES[Math.floor(Math.random() * PROPER_NAME_PREFIXES.length)];
-  const suffix = PROPER_NAME_SUFFIXES[Math.floor(Math.random() * PROPER_NAME_SUFFIXES.length)];
-  return `${prefix}${suffix}`;
+  if (mode === 0) {
+    // Mode 0: First Name + 1-3 random digits (e.g. sarah84, alex92, oliver7)
+    const fn = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+    const num = Math.floor(Math.random() * 99) + 1;
+    name = `${fn}${num}`;
+  } else if (mode === 1) {
+    // Mode 1: First Name + '.' + Last Name (e.g. alex.turner, sarah.miller)
+    const fn = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+    const ln = LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)];
+    name = `${fn}.${ln}`;
+  } else if (mode === 2) {
+    // Mode 2: Alphabet / Brand Word + 2-digit number (e.g. crwnmail24, vortex42, kronos99)
+    const word = ALPHABET_WORDS[Math.floor(Math.random() * ALPHABET_WORDS.length)];
+    const num = Math.floor(Math.random() * 90) + 10;
+    name = `${word}${num}`;
+  } else {
+    // Mode 3: Short alphabet letters + numbers (e.g. alx84, sar92, dvd21, mrc12)
+    const fn = FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)];
+    const shortPrefix = fn.slice(0, 3);
+    const num = Math.floor(Math.random() * 900) + 10;
+    name = `${shortPrefix}${num}`;
+  }
+
+  // Strict validation: NEVER allow the word 'cyber'
+  if (name.toLowerCase().includes('cyber')) {
+    return generateRandomMailboxName();
+  }
+
+  return name.toLowerCase();
 }
 
 // ==============================================================================
-// 2. BOOT & AUTHENTICATION MANAGEMENT
+// 2. CLEAN ROUTE & URL RESOLVER (Fixes #cyber-... URL route issues)
+// ==============================================================================
+
+function getCleanAddressFromURL() {
+  // 1. Check pathname: /inbox/user@domain or /user@domain
+  const rawPath = window.location.pathname.replace(/^\/+/, '').trim();
+  if (rawPath) {
+    if (rawPath.startsWith('inbox/')) {
+      const candidate = decodeURIComponent(rawPath.replace(/^inbox\//, '')).trim();
+      if (candidate.includes('@') && !candidate.toLowerCase().includes('cyber')) {
+        return candidate.toLowerCase();
+      }
+    } else if (rawPath.includes('@') && !rawPath.toLowerCase().includes('cyber')) {
+      return decodeURIComponent(rawPath).toLowerCase();
+    }
+  }
+
+  // 2. Check hash: #/inbox/user@domain or #user@domain
+  const rawHash = window.location.hash.replace(/^#[/]?/, '').trim();
+  if (rawHash) {
+    const candidate = decodeURIComponent(rawHash.replace(/^inbox\//, '')).trim();
+    if (candidate.includes('@') && !candidate.toLowerCase().includes('cyber')) {
+      return candidate.toLowerCase();
+    }
+  }
+
+  return null;
+}
+
+// Update URL cleanly using HTML5 History API (no messy or old #cyber-... hash)
+function updateCleanURLRoute(address) {
+  const cleanRoute = `/inbox/${encodeURIComponent(address)}`;
+  if (window.location.pathname !== cleanRoute || window.location.hash) {
+    window.history.replaceState({ address }, '', cleanRoute);
+  }
+}
+
+// ==============================================================================
+// 3. BOOT & AUTHENTICATION MANAGEMENT
 // ==============================================================================
 
 async function initApp() {
@@ -210,18 +317,26 @@ async function initApp() {
   // Check Discord Authentication
   await checkDiscordAuth();
 
-  // Check initial address from URL hash
-  const hash = window.location.hash.replace('#', '').trim();
-  if (hash && hash.includes('@')) {
-    setAddress(hash);
+  // Check clean address from URL (ignoring any old cyber hash/route)
+  const routeAddress = getCleanAddressFromURL();
+  if (routeAddress) {
+    setAddress(routeAddress);
   } else {
-    // Generate sleek initial address with proper alphabet (NO 'cyber')
-    const initialName = generateProperAlphabetMailbox();
+    // Generate fresh initial address with proper random name/alphabet+number (NO 'cyber')
+    const initialName = generateRandomMailboxName();
     setAddress(`${initialName}@${currentDomain}`);
   }
 
   renderRecentMailboxes();
 }
+
+// Listen to browser navigation (back/forward)
+window.addEventListener('popstate', (e) => {
+  const routeAddress = getCleanAddressFromURL();
+  if (routeAddress) {
+    setAddress(routeAddress, false);
+  }
+});
 
 async function loadDomains() {
   try {
@@ -386,15 +501,26 @@ devLoginForm.addEventListener('submit', async (e) => {
 });
 
 // ==============================================================================
-// 3. MAILBOX NAVIGATION & 24H PRESERVATION STATE
+// 4. MAILBOX NAVIGATION & 24H PRESERVATION STATE
 // ==============================================================================
 
-function setAddress(addr) {
-  const clean = addr.toLowerCase().trim();
-  if (!clean) return;
+function setAddress(addr, updateHistory = true) {
+  let clean = (addr || '').toLowerCase().trim();
+
+  // If address contains 'cyber' or is invalid, instantly regenerate with proper name/alphabet+number
+  if (!clean || clean.includes('cyber') || !clean.includes('@')) {
+    const parts = clean.split('@');
+    const domain = (parts[1] && availableDomains.includes(parts[1])) ? parts[1] : currentDomain;
+    clean = `${generateRandomMailboxName()}@${domain}`;
+  }
 
   currentAddress = clean;
-  window.location.hash = currentAddress;
+
+  // Clean HTML5 route: update URL to /inbox/user@domain (removes any #cyber-... in the browser)
+  if (updateHistory) {
+    updateCleanURLRoute(currentAddress);
+  }
+
   activeAddressDisplay.textContent = currentAddress;
   pasteInboxInput.value = currentAddress;
   testerAddressInput.value = currentAddress;
@@ -421,7 +547,8 @@ function setAddress(addr) {
 }
 
 function saveRecentMailbox(addr) {
-  recentMailboxes = recentMailboxes.filter((a) => a !== addr);
+  if (!addr || addr.toLowerCase().includes('cyber')) return;
+  recentMailboxes = recentMailboxes.filter((a) => a !== addr && !a.toLowerCase().includes('cyber'));
   recentMailboxes.unshift(addr);
   if (recentMailboxes.length > 8) {
     recentMailboxes = recentMailboxes.slice(0, 8);
@@ -431,6 +558,9 @@ function saveRecentMailbox(addr) {
 }
 
 function renderRecentMailboxes() {
+  // Strip any accidental 'cyber' from display
+  recentMailboxes = recentMailboxes.filter((a) => !a.toLowerCase().includes('cyber'));
+
   if (!recentMailboxes.length) {
     recentMailboxesList.innerHTML = '<span class="text-[11px] font-mono text-gray-600">None yet</span>';
     return;
@@ -719,7 +849,7 @@ function connectWebSocket() {
 }
 
 // ==============================================================================
-// 4. ACTION HANDLERS: CREATING, RESTORING, RANDOMIZING
+// 5. ACTION HANDLERS: CREATING, RESTORING, RANDOMIZING
 // ==============================================================================
 
 // Paste & Open Form (Can open any existing or preserved inbox directly!)
@@ -734,14 +864,14 @@ pasteInboxForm.addEventListener('submit', (e) => {
   setAddress(inputVal);
 });
 
-// Random Mail Button (Requires Discord Login! Proper Alphabet, No 'cyber')
+// Random Mail Button (Requires Discord Login! Generates proper alphabet / name, NO 'cyber')
 randomMailBtn.addEventListener('click', async () => {
   if (!currentUser || !currentUser.loggedIn) {
     promptDiscordLogin();
     return;
   }
 
-  const properName = generateProperAlphabetMailbox();
+  const properName = generateRandomMailboxName();
   const fullAddress = `${properName}@${currentDomain}`;
 
   try {
@@ -779,9 +909,13 @@ customCreateForm.addEventListener('submit', async (e) => {
     return;
   }
 
-  const username = customUsernameInput.value.trim().toLowerCase();
+  let username = customUsernameInput.value.trim().toLowerCase();
   const domain = customDomainSelect.value;
   if (!username) return;
+
+  // Filter out 'cyber' if someone types it in custom username
+  username = username.replace(/cyber[-_]?/gi, '');
+  if (!username) username = generateRandomMailboxName();
 
   const fullAddress = `${username}@${domain}`;
 
@@ -809,7 +943,7 @@ customCreateForm.addEventListener('submit', async (e) => {
 mainDomainSelect.addEventListener('change', (e) => {
   currentDomain = e.target.value;
   const parts = currentAddress.split('@');
-  const user = parts[0] || generateProperAlphabetMailbox();
+  const user = parts[0] || generateRandomMailboxName();
   setAddress(`${user}@${currentDomain}`);
 });
 
@@ -914,7 +1048,7 @@ closeQrModalBtn.addEventListener('click', () => {
 });
 
 // ==============================================================================
-// 5. ADMIN CONTROL VAULT (OWNER ACCESS, MULTI-DOMAIN, COLD STATS)
+// 6. ADMIN CONTROL VAULT (OWNER ACCESS, MULTI-DOMAIN, COLD STATS)
 // ==============================================================================
 
 openAdminBtn.addEventListener('click', () => {
@@ -1149,7 +1283,7 @@ copyNewKeyBtn.addEventListener('click', () => {
 });
 
 // ==============================================================================
-// 6. INTERACTIVE API CHECKER
+// 7. INTERACTIVE API CHECKER
 // ==============================================================================
 
 openApiTesterBtn.addEventListener('click', () => {
