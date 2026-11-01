@@ -505,11 +505,7 @@ discordLogoutBtn.addEventListener('click', async () => {
 
 // Prompt Discord Auth
 function promptDiscordLogin() {
-  if (discordOAuthBtnLink && discordOAuthBtnLink.href && !discordOAuthBtnLink.href.endsWith('#') && !discordOAuthBtnLink.href.includes('undefined')) {
-    window.location.href = discordOAuthBtnLink.href;
-    return;
-  }
-  discordAuthModal.classList.remove('hidden');
+  window.location.href = '/api/auth/discord/login';
 }
 
 discordLoginBtn.addEventListener('click', promptDiscordLogin);
@@ -976,7 +972,10 @@ mainDomainSelect.addEventListener('change', (e) => {
 
 // Copy Address
 copyActiveAddressBtn.addEventListener('click', () => {
-  if (!currentAddress) return;
+  if (!currentAddress) {
+    alert('Please generate or paste a mailbox first!');
+    return;
+  }
   navigator.clipboard.writeText(currentAddress).then(() => {
     copyBtnText.textContent = 'Copied!';
     setTimeout(() => {
@@ -1018,7 +1017,10 @@ deleteMessageBtn.addEventListener('click', async () => {
 
 // Clear Inbox
 clearCurrentInboxBtn.addEventListener('click', async () => {
-  if (!currentAddress) return;
+  if (!currentAddress) {
+    alert('No mailbox is currently active.');
+    return;
+  }
   if (!confirm(`Purge all emails in ${currentAddress}?`)) return;
   try {
     await fetch(`/api/inbox/${encodeURIComponent(currentAddress)}`, {
@@ -1036,10 +1038,11 @@ clearCurrentInboxBtn.addEventListener('click', async () => {
 
 // Sync / Refresh
 refreshInboxBtn.addEventListener('click', () => {
-  if (!currentAddress) return;
+  if (!currentAddress) {
+    alert('No mailbox is currently active.');
+    return;
+  }
   loadMessages();
-  checkDiscordVerification();
-});
   checkDiscordVerification();
 });
 
@@ -1066,7 +1069,10 @@ function updateSoundUI() {
 
 // QR Code Modal
 openQrBtn.addEventListener('click', () => {
-  if (!currentAddress) return;
+  if (!currentAddress) {
+    alert('Please generate or paste a mailbox first!');
+    return;
+  }
   qrAddressText.textContent = currentAddress;
   if (window.QRCode) {
     QRCode.toCanvas(qrCanvas, currentAddress, { width: 220, margin: 1 }, (err) => {
