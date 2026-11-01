@@ -1217,32 +1217,133 @@ async function loadAdminDomains() {
 
     activeDomainsList.innerHTML = domains
       .map(
-        (d) => `
-      <div class="clay-inset p-3.5 rounded-xl flex items-center justify-between text-xs font-mono">
-        <div class="flex items-center gap-3">
-          <span class="text-white font-bold text-sm">${escapeHtml(d.domain)}</span>
-          ${
-            d.is_default
-              ? '<span class="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">DEFAULT</span>'
-              : ''
-          }
+        (d) => {
+          const cardId = `dnsCard-${escapeHtml(d.domain).replace(/[^a-zA-Z0-9]/g, '_')}`;
+          return `
+      <div class="clay-inset p-3.5 rounded-xl space-y-3 text-xs font-mono border border-white/5">
+        <div class="flex items-center justify-between flex-wrap gap-2">
+          <div class="flex items-center gap-2.5 cursor-pointer toggle-dns-trigger" data-target="${cardId}">
+            <span class="text-base">🌐</span>
+            <span class="text-white font-bold text-sm hover:text-cyan-300 transition-colors">${escapeHtml(d.domain)}</span>
+            ${
+              d.is_default
+                ? '<span class="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">DEFAULT</span>'
+                : ''
+            }
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button class="toggle-dns-btn clay-btn px-2.5 py-1 text-[11px] text-cyan-300 hover:text-white flex items-center gap-1" data-target="${cardId}">
+              <span>📋</span>
+              <span>DNS Records</span>
+            </button>
+            ${
+              !d.is_default
+                ? `<button class="set-default-domain-btn clay-btn px-2.5 py-1 text-[11px] text-gray-300 hover:text-white" data-domain="${d.domain}">Set Default</button>`
+                : ''
+            }
+            <button class="delete-domain-btn clay-btn px-2.5 py-1 text-[11px] text-red-400 hover:text-red-300" data-domain="${d.domain}">
+              Delete
+            </button>
+          </div>
         </div>
-        <div class="flex items-center gap-2">
-          ${
-            !d.is_default
-              ? `<button class="set-default-domain-btn clay-btn px-2.5 py-1 text-[11px] text-cyan-300 hover:text-white" data-domain="${d.domain}">Set Default</button>`
-              : ''
-          }
-          <button class="delete-domain-btn clay-btn px-2.5 py-1 text-[11px] text-red-400 hover:text-red-300" data-domain="${d.domain}">
-            Delete
-          </button>
+
+        <!-- Expandable DNS Card -->
+        <div id="${cardId}" class="hidden p-3.5 rounded-xl bg-black/70 border border-cyan-500/30 space-y-3 text-xs">
+          <div class="flex items-center justify-between border-b border-white/5 pb-2">
+            <div class="text-cyan-300 font-bold flex items-center gap-1.5">
+              <span>📋</span>
+              <span>Cloudflare DNS Setup for <strong class="text-white underline">${escapeHtml(d.domain)}</strong></span>
+            </div>
+            <span class="text-[10px] text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/30">SMTP Inbound Ready</span>
+          </div>
+
+          <div class="p-2.5 rounded-lg bg-cyan-950/40 border border-cyan-500/20 text-[11px] text-gray-300 space-y-1">
+            <div class="text-white font-bold flex items-center gap-1">
+              <span>💡</span> <span>Do you need to create <code>mail.${escapeHtml(d.domain)}</code>?</span>
+            </div>
+            <div>
+              <strong class="text-emerald-300">NO! You do NOT need to create a new mail subdomain.</strong> Because your mail server is already active at <code class="text-cyan-300 font-bold">mail.rizzcord.site</code>, you only need to add 1 MX record pointing to <code class="text-cyan-300 font-bold">mail.rizzcord.site</code> in <span class="text-white font-bold">${escapeHtml(d.domain)}</span>'s Cloudflare DNS!
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Required Records (Add in Cloudflare DNS for ${escapeHtml(d.domain)}):</div>
+
+            <!-- MX Record -->
+            <div class="p-2.5 rounded-lg bg-vault-950 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+              <div class="space-y-0.5">
+                <div class="flex items-center gap-2">
+                  <span class="px-1.5 py-0.5 rounded font-bold text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">MX</span>
+                  <span class="text-gray-400">Name:</span> <code class="text-white font-bold">@</code>
+                  <span class="text-gray-400">Priority:</span> <code class="text-white font-bold">10</code>
+                </div>
+                <div>
+                  <span class="text-gray-400">Mail Server / Target:</span> <code class="text-cyan-300 font-bold">mail.rizzcord.site</code>
+                </div>
+              </div>
+              <button class="copy-record-btn clay-btn px-2.5 py-1 text-[10px] text-gray-300 hover:text-white shrink-0 self-start sm:self-auto" data-copy="mail.rizzcord.site">
+                Copy Target
+              </button>
+            </div>
+
+            <!-- SPF Record -->
+            <div class="p-2.5 rounded-lg bg-vault-950 border border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+              <div class="space-y-0.5">
+                <div class="flex items-center gap-2">
+                  <span class="px-1.5 py-0.5 rounded font-bold text-[9px] bg-purple-500/20 text-purple-300 border border-purple-500/30">TXT (SPF)</span>
+                  <span class="text-gray-400">Name:</span> <code class="text-white font-bold">@</code>
+                </div>
+                <div>
+                  <span class="text-gray-400">Content:</span> <code class="text-purple-300 font-bold">v=spf1 mx ~all</code>
+                </div>
+              </div>
+              <button class="copy-record-btn clay-btn px-2.5 py-1 text-[10px] text-gray-300 hover:text-white shrink-0 self-start sm:self-auto" data-copy="v=spf1 mx ~all">
+                Copy SPF
+              </button>
+            </div>
+          </div>
+
+          <!-- Optional Custom Subdomain Accordion -->
+          <details class="text-[11px] text-gray-400 cursor-pointer pt-1">
+            <summary class="hover:text-cyan-300 transition-colors">
+              Want custom <code>mail.${escapeHtml(d.domain)}</code> branding instead? (Click to view)
+            </summary>
+            <div class="mt-2 p-2.5 rounded-lg bg-black/40 border border-white/5 space-y-1.5 text-[11px]">
+              <p class="text-gray-300">If you prefer custom branding for this domain, add these 2 records in Cloudflare:</p>
+              <div>1. <strong>A Record:</strong> Name: <code class="text-cyan-300">mail</code> | Content: <code class="text-white">Your VPS IP</code> | Proxy: <strong class="text-rose-400">DNS ONLY (Grey Cloud)</strong></div>
+              <div>2. <strong>MX Record:</strong> Name: <code class="text-cyan-300">@</code> | Mail Server: <code class="text-cyan-300">mail.${escapeHtml(d.domain)}</code> | Priority: <code class="text-white">10</code></div>
+            </div>
+          </details>
         </div>
       </div>
-    `
+    `;
+        }
       )
       .join('');
 
     // Attach Action Listeners
+    document.querySelectorAll('.toggle-dns-btn, .toggle-dns-trigger').forEach((el) => {
+      el.addEventListener('click', () => {
+        const targetId = el.getAttribute('data-target');
+        const card = document.getElementById(targetId);
+        if (card) card.classList.toggle('hidden');
+      });
+    });
+
+    document.querySelectorAll('.copy-record-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const textToCopy = btn.getAttribute('data-copy');
+        navigator.clipboard.writeText(textToCopy).then(() => {
+          const original = btn.textContent;
+          btn.textContent = '✓ Copied!';
+          setTimeout(() => {
+            btn.textContent = original;
+          }, 2000);
+        });
+      });
+    });
+
     document.querySelectorAll('.set-default-domain-btn').forEach((btn) => {
       btn.addEventListener('click', async () => {
         const dom = btn.getAttribute('data-domain');

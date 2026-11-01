@@ -609,16 +609,20 @@
             </button>
           </form>
 
-          <!-- DNS MX Guide Accordion -->
-          <div class="p-3 rounded-xl bg-black/40 border border-white/5 text-xs font-mono space-y-1.5 text-gray-400">
-            <div class="text-gray-300 font-bold flex items-center gap-1.5">
-              <span>📋</span> <span>DNS MX Configuration Guide:</span>
+          <!-- DNS MX Quick Setup Guide -->
+          <div class="p-3.5 rounded-xl bg-black/50 border border-cyan-500/20 text-xs font-mono space-y-2 text-gray-300">
+            <div class="flex items-center justify-between">
+              <div class="text-cyan-300 font-bold flex items-center gap-1.5">
+                <span>📋</span> <span>Cloudflare DNS Guide for Connected Domains:</span>
+              </div>
+              <span class="text-[10px] text-gray-400">Click any domain below for 1-click copy records</span>
             </div>
-            <div class="text-[11px] space-y-1">
-              <div>• <strong>Host:</strong> <code class="text-cyan-300">@</code> or your subdomain</div>
-              <div>• <strong>Type:</strong> <code class="text-cyan-300">MX</code></div>
-              <div>• <strong>Priority:</strong> <code class="text-cyan-300">10</code></div>
-              <div>• <strong>Value / Target:</strong> Point to this server's public hostname (e.g. <code class="text-cyan-300">mail.yourdomain.com</code>)</div>
+            <div class="text-[11px] space-y-1 text-gray-400">
+              <div>• <strong class="text-white">Host (Name):</strong> <code class="text-cyan-300">@</code></div>
+              <div>• <strong class="text-white">Type:</strong> <code class="text-cyan-300">MX</code></div>
+              <div>• <strong class="text-white">Priority:</strong> <code class="text-cyan-300">10</code></div>
+              <div>• <strong class="text-white">Mail Server (Target):</strong> <code class="text-cyan-300 font-bold">mail.rizzcord.site</code> <span class="text-emerald-400 text-[10px]">(Do NOT create mail.domain — point all domains to mail.rizzcord.site!)</span></div>
+              <div>• <strong class="text-white">SPF (TXT):</strong> <code class="text-purple-300">v=spf1 mx ~all</code></div>
             </div>
           </div>
         </div>
