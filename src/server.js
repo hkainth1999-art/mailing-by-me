@@ -4,14 +4,25 @@ import { WebSocketServer, WebSocket } from 'ws';
 import path from 'path';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
-import { HTTP_PORT, DOMAINS } from './config.js';
+import { HTTP_PORT, DOMAINS, RETENTION_HOURS } from './config.js';
 import {
+  saveMailbox,
+  listRecentMailboxes,
   getMessages,
   getMessageById,
   getRawMessage,
   deleteMessage,
   clearInbox,
   getLatestDiscordVerification,
+  createApiKey,
+  listApiKeys,
+  revokeApiKey,
+  verifyApiKey,
+  verifyAdminPassword,
+  createAdminSession,
+  isValidAdminSession,
+  invalidateAdminSession,
+  getSystemStats,
   cleanOldMessages,
 } from './db.js';
 import { startSmtpServer, setBroadcastCallback } from './smtp.js';
@@ -78,7 +89,7 @@ wss.on('connection', (ws, req) => {
   });
 });
 
-// Broadcast incoming email from SMTP server to connected WebSocket clients
+// Broadcast incoming email from Port 25 SMTP to connected WebSocket clients
 setBroadcastCallback((address, payload) => {
   const cleanAddr = address.toLowerCase().trim();
   const clients = subscribers.get(cleanAddr);
@@ -91,7 +102,7 @@ setBroadcastCallback((address, payload) => {
     }
   }
 
-  // Also broadcast to any wildcard global subscribers
+  // Also broadcast to global watchers
   const globalClients = subscribers.get('*');
   if (globalClients) {
     const data = JSON.stringify(payload);
@@ -103,32 +114,114 @@ setBroadcastCallback((address, payload) => {
   }
 });
 
-// --- REST API Routes ---
+// Admin Auth Middleware
+function requireAdmin(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim() || req.query.token;
+  if (!isValidAdminSession(token)) {
+    return res.status(401).json({ error: 'Unauthorized. Admin credentials required.' });
+  }
+  next();
+}
+
+// Optional API Key validator for programmatic access
+function apiKeyAuth(req, res, next) {
+  const rawKey = req.headers['x-api-key'] || req.query.api_key;
+  if (rawKey) {
+    const verified = verifyApiKey(rawKey);
+    if (!verified) {
+      return res.status(401).json({ error: 'Invalid API Key provided' });
+    }
+    req.apiKey = verified;
+  }
+  next();
+}
+
+// --- Public & Mailbox REST API Routes ---
 
 // List configured domains
 app.get('/api/domains', (req, res) => {
   res.json({ domains: DOMAINS });
 });
 
-// List messages in an inbox
-app.get('/api/messages/:address', (req, res) => {
-  const { address } = req.params;
-  const messages = getMessages(address);
-  res.json({ address: address.toLowerCase(), count: messages.length, messages });
+// System Stats
+app.get('/api/stats', (req, res) => {
+  res.json({
+    service: 'CyberTemp Private Mail',
+    ...getSystemStats(),
+    domains: DOMAINS,
+  });
 });
 
-// Get a single message details (with HTML, attachments, etc.)
-app.get('/api/messages/:address/:id', (req, res) => {
+// List recent mailboxes
+app.get('/api/inbox/recent', (req, res) => {
+  const limit = Math.min(50, parseInt(req.query.limit || '15', 10));
+  const recent = listRecentMailboxes(limit);
+  res.json({ recent });
+});
+
+// Create or register a custom mailbox
+app.post('/api/inbox/create', (req, res) => {
+  const { address, username, domain } = req.body;
+  let fullAddress = '';
+
+  if (address && address.includes('@')) {
+    fullAddress = address.trim().toLowerCase();
+  } else if (username && domain) {
+    fullAddress = `${username.trim().toLowerCase()}@${domain.trim().toLowerCase()}`;
+  } else if (address) {
+    fullAddress = `${address.trim().toLowerCase()}@${DOMAINS[0]}`;
+  } else {
+    return res.status(400).json({ error: 'Please provide a valid mailbox address or username + domain' });
+  }
+
+  const record = saveMailbox(fullAddress);
+  res.json({
+    success: true,
+    address: record.address,
+    created_at: record.created_at,
+    retention_days: Math.round(RETENTION_HOURS / 24),
+  });
+});
+
+// List messages in an inbox (Conserved for 10 days!)
+app.get('/api/messages/:address', apiKeyAuth, (req, res) => {
+  const { address } = req.params;
+  const cleanAddr = address.toLowerCase().trim();
+  saveMailbox(cleanAddr); // Ensure registered
+  const messages = getMessages(cleanAddr);
+  res.json({
+    address: cleanAddr,
+    count: messages.length,
+    retention_days: Math.round(RETENTION_HOURS / 24),
+    messages,
+  });
+});
+
+// Get a single message details (with HTML, attachments, headers)
+app.get('/api/messages/:address/:id', apiKeyAuth, (req, res) => {
   const { address, id } = req.params;
   const message = getMessageById(address, id);
   if (!message) {
-    return res.status(404).json({ error: 'Message not found' });
+    return res.status(404).json({ error: 'Message not found in vault' });
   }
   res.json({ message });
 });
 
+// Download original .eml file
+app.get('/api/messages/:address/:id/download', (req, res) => {
+  const { address, id } = req.params;
+  const raw = getRawMessage(address, id);
+  if (!raw) {
+    return res.status(404).json({ error: 'Message not found' });
+  }
+  res.setHeader('Content-Type', 'message/rfc822');
+  res.setHeader('Content-Disposition', `attachment; filename="email_${id}.eml"`);
+  res.send(raw);
+});
+
 // Get raw RFC822 source
-app.get('/api/raw/:address/:id', (req, res) => {
+app.get('/api/raw/:address/:id', apiKeyAuth, (req, res) => {
   const { address, id } = req.params;
   const raw = getRawMessage(address, id);
   if (!raw) {
@@ -139,28 +232,27 @@ app.get('/api/raw/:address/:id', (req, res) => {
 });
 
 // Delete a message
-app.delete('/api/messages/:address/:id', (req, res) => {
+app.delete('/api/messages/:address/:id', apiKeyAuth, (req, res) => {
   const { address, id } = req.params;
   deleteMessage(address, id);
   res.json({ status: 'deleted', id });
 });
 
 // Clear all messages in an inbox
-app.delete('/api/inbox/:address', (req, res) => {
+app.delete('/api/inbox/:address', apiKeyAuth, (req, res) => {
   const { address } = req.params;
   clearInbox(address);
   res.json({ status: 'cleared', address });
 });
 
 // Dedicated Discord Verification Code & URL Endpoint (supports ?wait=true&timeout=30)
-app.get('/api/discord/:address', async (req, res) => {
+app.get('/api/discord/:address', apiKeyAuth, async (req, res) => {
   const { address } = req.params;
   const shouldWait = req.query.wait === 'true';
   const timeoutSec = Math.min(60, Math.max(5, parseInt(req.query.timeout || '30', 10)));
-
   const cleanAddr = address.toLowerCase().trim();
 
-  // First check if already received
+  // 1. Check if already received
   const existing = getLatestDiscordVerification(cleanAddr);
   if (existing) {
     return res.json({
@@ -180,7 +272,7 @@ app.get('/api/discord/:address', async (req, res) => {
     });
   }
 
-  // Long-poll waiting
+  // 2. Long-poll wait
   let resolved = false;
   const checkInterval = 1000;
   const startTime = Date.now();
@@ -217,13 +309,102 @@ app.get('/api/discord/:address', async (req, res) => {
   });
 });
 
+// --- Admin Authentication & API Key Management ---
+
+// Admin Login
+app.post('/api/admin/login', (req, res) => {
+  const { password } = req.body;
+  if (!verifyAdminPassword(password)) {
+    return res.status(401).json({ success: false, error: 'Invalid admin credentials' });
+  }
+
+  const session = createAdminSession();
+  res.json({
+    success: true,
+    token: session.token,
+    expires_at: session.expires_at,
+    message: 'Admin authorization granted',
+  });
+});
+
+// Admin Logout
+app.post('/api/admin/logout', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  if (token) {
+    invalidateAdminSession(token);
+  }
+  res.json({ success: true, message: 'Logged out' });
+});
+
+// Verify Admin Token
+app.get('/api/admin/verify', (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  const valid = isValidAdminSession(token);
+  res.json({ valid });
+});
+
+// List API Keys (Admin only)
+app.get('/api/admin/keys', requireAdmin, (req, res) => {
+  const keys = listApiKeys();
+  res.json({ keys });
+});
+
+// Create new API Key (Admin only)
+app.post('/api/admin/keys', requireAdmin, (req, res) => {
+  const { name, permissions } = req.body;
+  const newKey = createApiKey({
+    name: name || 'API Token',
+    permissions: permissions || 'full',
+  });
+  res.json({
+    success: true,
+    key: newKey, // Note: raw key is only returned once here
+    message: 'Store this API Key securely. It cannot be retrieved again.',
+  });
+});
+
+// Revoke API Key (Admin only)
+app.delete('/api/admin/keys/:id', requireAdmin, (req, res) => {
+  const { id } = req.params;
+  const ok = revokeApiKey(id);
+  res.json({ success: ok, id });
+});
+
+// Interactive API Key Checker (Tests an API key validity, scope & metadata)
+app.post('/api/admin/check-key', (req, res) => {
+  const rawKey = req.body.apiKey || req.headers['x-api-key'];
+  if (!rawKey) {
+    return res.status(400).json({ valid: false, error: 'No API key provided in body or x-api-key header' });
+  }
+
+  const verified = verifyApiKey(rawKey);
+  if (!verified) {
+    return res.status(401).json({
+      valid: false,
+      error: 'Invalid or revoked API key',
+    });
+  }
+
+  res.json({
+    valid: true,
+    id: verified.id,
+    prefix: verified.prefix,
+    name: verified.name,
+    permissions: verified.permissions,
+    created_at: verified.created_at,
+    last_used_at: verified.last_used_at,
+  });
+});
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'ok',
-    service: 'forsaken-mail-modified',
+    service: 'cyber-temp-mail-smtp',
     domains: DOMAINS,
-    smtp_port: HTTP_PORT,
+    retention_days: Math.round(RETENTION_HOURS / 24),
     timestamp: new Date().toISOString(),
   });
 });
@@ -233,7 +414,7 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'));
 });
 
-// Periodic database cleanup every hour
+// Periodic database cleanup every hour (preserves for 10 days / 240 hours)
 setInterval(() => {
   cleanOldMessages();
 }, 3600 * 1000);
@@ -241,13 +422,14 @@ setInterval(() => {
 // Start HTTP Server
 server.listen(HTTP_PORT, '0.0.0.0', () => {
   console.log(`\n================================================================`);
-  console.log(`⚡ FORSAKEN MAIL (MODIFIED) RUNNING!`);
+  console.log(`⚡ CYBER TEMP MAIL (NEOMORPHIC SMTP SERVER) RUNNING!`);
   console.log(`================================================================`);
   console.log(`🌐 Web Dashboard & API: http://0.0.0.0:${HTTP_PORT}`);
   console.log(`📬 Configured Domains:   ${DOMAINS.join(', ')}`);
+  console.log(`🔒 Email Conservation:  ${Math.round(RETENTION_HOURS / 24)} Days (${RETENTION_HOURS} Hours)`);
+  console.log(`🛡️ Admin Default Pwd:   ${process.env.ADMIN_PASSWORD || 'cyberadmin2026'}`);
   console.log(`================================================================\n`);
 });
 
 // Start Inbound SMTP Server on Port 25
 startSmtpServer();
-

@@ -12,7 +12,8 @@ services:
       - PORT=3000
       - SMTP_PORT=25
       - DATA_DIR=/app/data
-      - RETENTION_HOURS=48
+      - RETENTION_HOURS=${RETENTION_HOURS:-240}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-cyberadmin2026}
     volumes:
       - ./data:/app/data
 

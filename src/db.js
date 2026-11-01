@@ -1,9 +1,15 @@
 import fs from 'fs';
 import path from 'path';
-import { DATA_DIR, RETENTION_HOURS } from './config.js';
+import crypto from 'crypto';
+import { DATA_DIR, RETENTION_HOURS, ADMIN_PASSWORD } from './config.js';
 
 let db = null;
-let memoryStore = { mailboxes: new Set(), messages: [] };
+let memoryStore = {
+  mailboxes: new Map(), // address -> { address, created_at }
+  messages: [],
+  apiKeys: new Map(), // id -> keyObj
+  adminSessions: new Set(),
+};
 
 try {
   const { DatabaseSync } = await import('node:sqlite');
@@ -12,10 +18,12 @@ try {
 
   db.exec(`
     PRAGMA journal_mode = WAL;
+    
     CREATE TABLE IF NOT EXISTS mailboxes (
       address TEXT PRIMARY KEY,
       created_at INTEGER
     );
+
     CREATE TABLE IF NOT EXISTS messages (
       id TEXT PRIMARY KEY,
       inbox_address TEXT,
@@ -34,23 +42,69 @@ try {
       received_at INTEGER,
       is_read INTEGER DEFAULT 0
     );
+
+    CREATE TABLE IF NOT EXISTS api_keys (
+      id TEXT PRIMARY KEY,
+      key_hash TEXT UNIQUE,
+      prefix TEXT,
+      name TEXT,
+      permissions TEXT,
+      created_at INTEGER,
+      last_used_at INTEGER
+    );
+
+    CREATE TABLE IF NOT EXISTS admin_sessions (
+      token TEXT PRIMARY KEY,
+      created_at INTEGER,
+      expires_at INTEGER
+    );
+
     CREATE INDEX IF NOT EXISTS idx_inbox_received ON messages(inbox_address, received_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_mailboxes_created ON mailboxes(created_at DESC);
   `);
-  console.log('✅ SQLite database initialized at:', dbPath);
+  console.log('✅ SQLite Cyber Vault initialized at:', dbPath);
 } catch (err) {
-  console.warn('⚠️ node:sqlite not available, falling back to memory/JSON store:', err.message);
+  console.warn('⚠️ node:sqlite not available, using in-memory store:', err.message);
   db = null;
 }
 
+// --- Mailbox Operations ---
+
 export function saveMailbox(address) {
   const cleanAddr = address.toLowerCase().trim();
+  const now = Date.now();
   if (db) {
     const stmt = db.prepare('INSERT OR IGNORE INTO mailboxes (address, created_at) VALUES (?, ?)');
-    stmt.run(cleanAddr, Date.now());
+    stmt.run(cleanAddr, now);
   } else {
-    memoryStore.mailboxes.add(cleanAddr);
+    if (!memoryStore.mailboxes.has(cleanAddr)) {
+      memoryStore.mailboxes.set(cleanAddr, { address: cleanAddr, created_at: now });
+    }
   }
+  return { address: cleanAddr, created_at: now };
 }
+
+export function listRecentMailboxes(limit = 15) {
+  if (db) {
+    const stmt = db.prepare(`
+      SELECT m.address, m.created_at,
+             (SELECT COUNT(*) FROM messages msg WHERE msg.inbox_address = m.address) as count,
+             (SELECT MAX(received_at) FROM messages msg WHERE msg.inbox_address = m.address) as last_active
+      FROM mailboxes m
+      ORDER BY COALESCE(last_active, m.created_at) DESC
+      LIMIT ?
+    `);
+    return stmt.all(limit);
+  }
+  return Array.from(memoryStore.mailboxes.values())
+    .map((m) => {
+      const count = memoryStore.messages.filter((msg) => msg.inbox_address === m.address).length;
+      return { address: m.address, created_at: m.created_at, count };
+    })
+    .slice(0, limit);
+}
+
+// --- Message Operations ---
 
 export function saveMessage(msg) {
   const cleanInbox = msg.inbox_address.toLowerCase().trim();
@@ -114,12 +168,9 @@ export function getMessages(inboxAddress) {
 export function getMessageById(inboxAddress, msgId) {
   const cleanInbox = inboxAddress.toLowerCase().trim();
   if (db) {
-    // Mark as read
     db.prepare('UPDATE messages SET is_read = 1 WHERE id = ? AND inbox_address = ?').run(msgId, cleanInbox);
 
-    const stmt = db.prepare(`
-      SELECT * FROM messages WHERE id = ? AND inbox_address = ?
-    `);
+    const stmt = db.prepare('SELECT * FROM messages WHERE id = ? AND inbox_address = ?');
     const row = stmt.get(msgId, cleanInbox);
     if (!row) return null;
 
@@ -182,14 +233,146 @@ export function getLatestDiscordVerification(inboxAddress) {
   );
 }
 
-// Background cleanup of old messages
+// --- API Keys Management ---
+
+function hashKey(rawKey) {
+  return crypto.createHash('sha256').update(rawKey).digest('hex');
+}
+
+export function createApiKey({ name = 'Default Key', permissions = 'full' }) {
+  const id = crypto.randomUUID();
+  const rawKey = `ct_live_${crypto.randomBytes(24).toString('hex')}`;
+  const key_hash = hashKey(rawKey);
+  const prefix = rawKey.substring(0, 15) + '...';
+  const now = Date.now();
+
+  if (db) {
+    const stmt = db.prepare(`
+      INSERT INTO api_keys (id, key_hash, prefix, name, permissions, created_at, last_used_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(id, key_hash, prefix, name, permissions, now, null);
+  } else {
+    memoryStore.apiKeys.set(id, { id, key_hash, prefix, name, permissions, created_at: now, last_used_at: null });
+  }
+
+  return { id, key: rawKey, prefix, name, permissions, created_at: now };
+}
+
+export function listApiKeys() {
+  if (db) {
+    const stmt = db.prepare(`
+      SELECT id, prefix, name, permissions, created_at, last_used_at
+      FROM api_keys
+      ORDER BY created_at DESC
+    `);
+    return stmt.all();
+  }
+  return Array.from(memoryStore.apiKeys.values()).map(({ key_hash, ...rest }) => rest);
+}
+
+export function revokeApiKey(id) {
+  if (db) {
+    const res = db.prepare('DELETE FROM api_keys WHERE id = ?').run(id);
+    return res.changes > 0;
+  }
+  return memoryStore.apiKeys.delete(id);
+}
+
+export function verifyApiKey(rawKey) {
+  if (!rawKey || typeof rawKey !== 'string') return null;
+  const key_hash = hashKey(rawKey.trim());
+  const now = Date.now();
+
+  if (db) {
+    const stmt = db.prepare('SELECT id, prefix, name, permissions, created_at, last_used_at FROM api_keys WHERE key_hash = ?');
+    const keyRecord = stmt.get(key_hash);
+    if (!keyRecord) return null;
+
+    db.prepare('UPDATE api_keys SET last_used_at = ? WHERE id = ?').run(now, keyRecord.id);
+    return keyRecord;
+  }
+
+  for (const k of memoryStore.apiKeys.values()) {
+    if (k.key_hash === key_hash) {
+      k.last_used_at = now;
+      return k;
+    }
+  }
+  return null;
+}
+
+// --- Admin Session Management ---
+
+export function verifyAdminPassword(pwd) {
+  if (!pwd) return false;
+  return pwd === ADMIN_PASSWORD;
+}
+
+export function createAdminSession() {
+  const token = `admin_sess_${crypto.randomBytes(32).toString('hex')}`;
+  const now = Date.now();
+  const expiresAt = now + 7 * 24 * 3600 * 1000; // 7 days session
+
+  if (db) {
+    db.prepare('INSERT INTO admin_sessions (token, created_at, expires_at) VALUES (?, ?, ?)').run(token, now, expiresAt);
+  } else {
+    memoryStore.adminSessions.add(token);
+  }
+  return { token, expires_at: expiresAt };
+}
+
+export function isValidAdminSession(token) {
+  if (!token) return false;
+  if (db) {
+    const stmt = db.prepare('SELECT * FROM admin_sessions WHERE token = ? AND expires_at > ?');
+    const found = stmt.get(token, Date.now());
+    return Boolean(found);
+  }
+  return memoryStore.adminSessions.has(token);
+}
+
+export function invalidateAdminSession(token) {
+  if (db) {
+    db.prepare('DELETE FROM admin_sessions WHERE token = ?').run(token);
+  } else {
+    memoryStore.adminSessions.delete(token);
+  }
+}
+
+// --- System Stats & 10-Day Retention Cleanup ---
+
+export function getSystemStats() {
+  if (db) {
+    const mailboxesCount = db.prepare('SELECT COUNT(*) as count FROM mailboxes').get()?.count || 0;
+    const messagesCount = db.prepare('SELECT COUNT(*) as count FROM messages').get()?.count || 0;
+    const keysCount = db.prepare('SELECT COUNT(*) as count FROM api_keys').get()?.count || 0;
+    return {
+      mailboxes: mailboxesCount,
+      messages: messagesCount,
+      api_keys: keysCount,
+      retention_days: Math.round(RETENTION_HOURS / 24),
+      retention_hours: RETENTION_HOURS,
+    };
+  }
+  return {
+    mailboxes: memoryStore.mailboxes.size,
+    messages: memoryStore.messages.length,
+    api_keys: memoryStore.apiKeys.size,
+    retention_days: Math.round(RETENTION_HOURS / 24),
+    retention_hours: RETENTION_HOURS,
+  };
+}
+
+// Background cleanup of expired messages (default 10 days / 240 hours)
 export function cleanOldMessages() {
   const cutoff = Date.now() - RETENTION_HOURS * 3600 * 1000;
   if (db) {
     const res = db.prepare('DELETE FROM messages WHERE received_at < ?').run(cutoff);
     if (res.changes > 0) {
-      console.log(`🧹 Purged ${res.changes} expired messages past ${RETENTION_HOURS}h retention.`);
+      console.log(`🧹 Conserved database clean: Purged ${res.changes} messages older than ${RETENTION_HOURS}h.`);
     }
+    // Clean expired admin sessions
+    db.prepare('DELETE FROM admin_sessions WHERE expires_at < ?').run(Date.now());
   }
 }
-
