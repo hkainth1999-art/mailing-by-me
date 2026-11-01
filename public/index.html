@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CyberTemp — Minimalist Port 25 Disposable Mail</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⚡</text></svg>">
+  <title>Crown Mail Vault — Private Port 25 Disposable Mail & Cold Vault</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👑</text></svg>">
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
@@ -13,13 +13,15 @@
       theme: {
         extend: {
           colors: {
-            cyber: {
-              900: '#080a10',
-              800: '#0f131d',
-              700: '#141a27',
+            vault: {
+              950: '#06080e',
+              900: '#0a0d16',
+              800: '#0f1422',
+              700: '#151b2e',
               cyan: '#00f0ff',
               emerald: '#10b981',
               purple: '#9333ea',
+              discord: '#5865f2',
             }
           }
         }
@@ -32,91 +34,144 @@
 </head>
 <body class="min-h-screen flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200">
 
-  <!-- Top Cyber Navigation -->
-  <header class="neo-plate px-6 py-3.5 sticky top-0 z-30 flex flex-wrap items-center justify-between gap-4 border-b border-white/5">
+  <!-- Top Cyber-Clay Navigation -->
+  <header class="clay-plate px-6 py-3.5 sticky top-0 z-30 flex flex-wrap items-center justify-between gap-4 border-b border-white/5 rounded-none md:rounded-b-2xl">
     <div class="flex items-center space-x-3.5">
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-500 to-purple-600 flex items-center justify-center shadow-lg shadow-cyan-500/20">
-        <span class="text-black font-black text-lg">⚡</span>
+      <div class="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-500 via-purple-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-purple-600/30">
+        <!-- Custom Crown SVG Icon -->
+        <svg class="w-6 h-6 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 4l3 12h14l3-12-6 7-4-7-4 7-6-7zm3 16h14v2H5v-2z"></path>
+        </svg>
       </div>
       <div>
         <div class="flex items-center gap-2">
           <h1 class="text-base font-extrabold tracking-tight text-white flex items-center gap-1.5">
-            CYBER<span class="text-cyan-400">TEMP</span>
+            CROWN<span class="text-cyan-400">VAULT</span>
           </h1>
           <span class="text-[9px] uppercase font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-bold">
-            SMTP Port 25
+            Port 25 SMTP
           </span>
-          <span class="text-[9px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold">
-            10-Day Vault
+          <span class="text-[9px] uppercase font-mono px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/30 font-bold">
+            24h Cold Preserve
+          </span>
+          <span class="text-[9px] uppercase font-mono px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 font-bold hidden sm:inline-block">
+            0 Deletions
           </span>
         </div>
-        <p class="text-[11px] text-gray-400 font-mono">Zero Middleman • Direct Inbound Architecture</p>
+        <p class="text-[11px] text-gray-400 font-mono">Zero Middleman • Infinite Cold Storage Vault • Multi-Domain</p>
       </div>
     </div>
 
-    <!-- Right Controls: Audio Chime, API Tester, Admin, Mesh Status -->
+    <!-- Right Controls: Audio Chime, API Tester, Admin, Discord Profile, Mesh Status -->
     <div class="flex items-center flex-wrap gap-2.5">
+      
       <!-- Audio Alert Toggle -->
-      <button id="soundToggleBtn" title="Toggle Incoming Email Chime" class="neo-btn px-2.5 py-1.5 rounded-xl text-xs text-gray-300 flex items-center gap-1.5">
-        <span id="soundIcon">🔔</span>
+      <button id="soundToggleBtn" title="Toggle Incoming Email Chime" class="clay-btn px-2.5 py-1.5 text-xs text-gray-300 gap-1.5">
+        <span id="soundIcon">
+          <!-- Bell SVG -->
+          <svg class="svg-icon" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path><path d="M13.73 21a2 2 0 0 1-3.46 0"></path></svg>
+        </span>
         <span class="text-[11px] font-mono hidden sm:inline" id="soundText">Sound ON</span>
       </button>
 
       <!-- API Tester / Checker Modal Trigger -->
-      <button id="openApiTesterBtn" class="neo-btn px-3 py-1.5 rounded-xl text-xs font-mono text-cyan-300 flex items-center gap-1.5 hover:border-cyan-500/40">
-        <span>🔌</span>
-        <span>API Checker</span>
+      <button id="openApiTesterBtn" class="clay-btn px-3 py-1.5 text-xs font-mono text-cyan-300 gap-1.5 hover:text-white">
+        <!-- Plug SVG -->
+        <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 2v6m0 8v6M8 8v4a4 4 0 0 0 8 0V8"></path><line x1="6" y1="2" x2="6" y2="6"></line><line x1="18" y1="2" x2="18" y2="6"></line></svg>
+        <span>API Tester</span>
       </button>
 
-      <!-- Admin Portal / API Keys Trigger -->
-      <button id="openAdminBtn" class="neo-btn px-3 py-1.5 rounded-xl text-xs font-mono text-purple-300 flex items-center gap-1.5 hover:border-purple-500/40">
-        <span>🛡️</span>
-        <span id="adminBtnLabel">Admin Keys</span>
+      <!-- Admin Portal Trigger (Only shown or unlocked for Discord Owners) -->
+      <button id="openAdminBtn" class="hidden clay-btn px-3 py-1.5 text-xs font-mono text-amber-300 border-amber-500/30 gap-1.5 hover:text-white shadow-amber-500/10">
+        <!-- Shield Lock SVG -->
+        <svg class="svg-icon text-amber-400" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><circle cx="12" cy="11" r="2"></circle><path d="M12 13v3"></path></svg>
+        <span>Admin Vault</span>
       </button>
+
+      <!-- Discord Auth Trigger / User Profile Badge -->
+      <div id="discordAuthContainer">
+        <!-- Unauthenticated Button -->
+        <button id="discordLoginBtn" class="clay-btn-discord px-3 py-1.5 text-xs font-mono flex items-center gap-1.5">
+          <!-- Discord Official SVG -->
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24">
+            <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+          </svg>
+          <span>Login with Discord</span>
+        </button>
+
+        <!-- Authenticated Profile Capsule -->
+        <div id="discordUserPill" class="hidden clay-pill px-3 py-1.5 flex items-center gap-2 border border-purple-500/30">
+          <img id="userAvatarImg" src="" alt="Avatar" class="w-5 h-5 rounded-full bg-purple-900 border border-purple-400">
+          <span id="userUsernameText" class="text-xs font-mono text-white font-bold max-w-[120px] truncate">User</span>
+          <span id="userRoleBadge" class="hidden text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold uppercase">OWNER</span>
+          <button id="discordLogoutBtn" title="Logout" class="text-gray-400 hover:text-red-400 text-xs ml-1 font-mono">
+            <!-- Logout SVG -->
+            <svg class="svg-icon-sm" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
+          </button>
+        </div>
+      </div>
 
       <!-- Live WebSocket Mesh Status -->
-      <div id="wsStatusBadge" class="neo-pill flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-[11px] font-mono text-emerald-400 border border-emerald-500/20">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-emerald"></span>
-        <span id="wsStatusText">MESH LIVE</span>
+      <div id="wsStatusBadge" class="clay-pill flex items-center space-x-1.5 px-3 py-1.5 text-[11px] font-mono text-emerald-400 border border-emerald-500/20">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 pulse-live"></span>
+        <span id="wsStatusText">VAULT LIVE</span>
       </div>
+
     </div>
   </header>
 
-  <!-- Main Cyber Access Station -->
-  <section class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 space-y-4">
+  <!-- Main Cyber-Clay Access Station -->
+  <main class="max-w-7xl mx-auto w-full px-4 sm:px-6 py-6 space-y-4">
 
-    <!-- 1. PASTE & OPEN INBOX OMNIBAR (Requested Feature) -->
-    <div class="neo-plate p-4 sm:p-5 rounded-2xl relative overflow-hidden border border-cyan-500/20">
+    <!-- 1. PASTE & RESTORE INBOX OMNIBAR -->
+    <div class="clay-plate p-4 sm:p-5 relative overflow-hidden border border-cyan-500/20">
+      
+      <!-- Top notice if user is not logged in -->
+      <div id="authRequiredBanner" class="mb-3.5 p-2.5 rounded-xl bg-purple-950/40 border border-purple-500/30 flex items-center justify-between gap-3 text-xs font-mono text-purple-200">
+        <div class="flex items-center gap-2">
+          <svg class="svg-icon text-purple-400" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+          <span>Discord Login required to generate new mailboxes. You can still paste any existing inbox to view messages.</span>
+        </div>
+        <button id="bannerLoginBtn" class="clay-btn-discord px-3 py-1 text-[11px] shrink-0">
+          Login Now
+        </button>
+      </div>
+
       <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         
         <!-- Large Paste & Open Form -->
         <form id="pasteInboxForm" class="flex-1 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
-          <div class="flex-1 neo-inset flex items-center px-4 py-2.5 rounded-xl border border-white/5">
-            <span class="text-cyan-400 font-mono mr-3 text-sm">📋</span>
+          <div class="flex-1 clay-inset flex items-center px-4 py-2.5 border border-white/5">
+            <!-- Mail SVG -->
+            <svg class="svg-icon text-cyan-400 mr-3" viewBox="0 0 24 24"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
             <input
               type="text"
               id="pasteInboxInput"
-              placeholder="Paste any address to open inbox (e.g. cfjf7byh@rizzcord.site or username)"
+              placeholder="Paste any address to open or restore preserved vault (e.g. crwnmail24@crwnmail.com)"
               class="w-full bg-transparent text-sm font-mono text-white placeholder-gray-500 outline-none"
               autocomplete="off"
               spellcheck="false"
             >
           </div>
-          <button type="submit" class="neo-btn-primary px-5 py-2.5 rounded-xl text-xs font-mono font-bold text-black flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20">
-            <span>⚡</span>
-            <span>OPEN INBOX</span>
+          <button type="submit" class="clay-btn-primary px-5 py-2.5 text-xs font-mono font-bold flex items-center justify-center gap-2">
+            <!-- Zap SVG -->
+            <svg class="svg-icon text-black" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+            <span>OPEN / RESTORE</span>
           </button>
         </form>
 
-        <!-- Quick Random Generator -->
+        <!-- Quick Random Generator (Proper alphabet words, NO 'cyber') -->
         <div class="flex items-center gap-2">
-          <button id="randomMailBtn" class="neo-btn px-4 py-2.5 rounded-xl text-xs font-mono font-bold text-gray-200 flex items-center gap-2 hover:text-white">
-            <span>🎲</span>
+          <button id="randomMailBtn" class="clay-btn px-4 py-2.5 text-xs font-mono font-bold text-gray-200 gap-2 hover:text-white">
+            <!-- Dice SVG -->
+            <svg class="svg-icon text-cyan-400" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><circle cx="15.5" cy="15.5" r="1.5"></circle><circle cx="15.5" cy="8.5" r="1.5"></circle><circle cx="8.5" cy="15.5" r="1.5"></circle></svg>
             <span>Random Mail</span>
           </button>
           
-          <button id="openCreateCustomBtn" class="neo-btn px-3 py-2.5 rounded-xl text-xs font-mono text-gray-300 hover:text-white" title="Create Custom Username">
-            <span>➕ Custom</span>
+          <button id="openCreateCustomBtn" class="clay-btn px-3 py-2.5 text-xs font-mono text-gray-300 hover:text-white gap-1.5" title="Create Custom Username">
+            <!-- Plus SVG -->
+            <svg class="svg-icon text-emerald-400" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            <span>Custom</span>
           </button>
         </div>
 
@@ -126,83 +181,153 @@
       <div id="customCreateDrawer" class="hidden mt-4 pt-4 border-t border-white/5">
         <form id="customCreateForm" class="flex flex-wrap items-center gap-2.5">
           <span class="text-xs font-mono text-gray-400">Custom Mailbox:</span>
-          <div class="neo-inset px-3 py-1.5 rounded-xl flex items-center gap-1">
+          <div class="clay-inset px-3 py-1.5 flex items-center gap-1">
             <input
               type="text"
               id="customUsernameInput"
-              placeholder="my-custom-name"
-              class="bg-transparent text-xs font-mono text-white outline-none w-36 sm:w-48"
+              placeholder="e.g. crwnmail, vortex, phantom"
+              class="bg-transparent text-xs font-mono text-white outline-none w-44 sm:w-56"
               required
             >
             <span class="text-gray-500 text-xs font-mono">@</span>
             <select id="customDomainSelect" class="bg-transparent text-xs font-mono text-cyan-300 outline-none cursor-pointer">
-              <!-- Dynamically injected -->
+              <!-- Dynamically injected from SQLite domains table -->
             </select>
           </div>
-          <button type="submit" class="neo-btn px-3.5 py-1.5 rounded-xl text-xs font-mono text-emerald-400 font-bold hover:border-emerald-500/40">
+          <button type="submit" class="clay-btn px-3.5 py-1.5 text-xs font-mono text-emerald-400 font-bold hover:border-emerald-500/40">
             Create Mailbox
           </button>
         </form>
       </div>
 
-      <!-- Recent Mailboxes Ribbon -->
-      <div class="mt-3.5 pt-3 border-t border-white/5 flex flex-wrap items-center gap-2 text-xs">
-        <span class="text-[11px] font-mono text-gray-500 flex items-center gap-1">
-          <span>🕒</span> Recent:
-        </span>
-        <div id="recentMailboxesList" class="flex flex-wrap items-center gap-1.5">
-          <span class="text-[11px] font-mono text-gray-600">None yet</span>
+      <!-- Recent & User-Saved Mailboxes Ribbon -->
+      <div class="mt-3.5 pt-3 border-t border-white/5 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-[11px] font-mono text-gray-500 flex items-center gap-1">
+            <!-- Clock SVG -->
+            <svg class="svg-icon-sm text-gray-500" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span>Recent:</span>
+          </span>
+          <div id="recentMailboxesList" class="flex flex-wrap items-center gap-1.5">
+            <span class="text-[11px] font-mono text-gray-600">None yet</span>
+          </div>
+        </div>
+
+        <!-- User Inboxes Tab Toggle (if logged in) -->
+        <div id="userInboxesTabContainer" class="hidden">
+          <button id="toggleUserInboxesBtn" class="text-[11px] font-mono text-cyan-400 hover:underline flex items-center gap-1">
+            <span>My Discord Inboxes</span>
+            <span id="userInboxesCountBadge" class="clay-badge px-1.5 text-[10px]">0</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- User Inboxes Drawer (Hidden by default) -->
+      <div id="userInboxesDrawer" class="hidden mt-3 p-3 clay-inset rounded-xl space-y-2">
+        <div class="text-[11px] font-mono font-bold text-gray-400 uppercase tracking-wider">Your Discord Created Mailboxes</div>
+        <div id="userInboxesList" class="flex flex-wrap gap-2">
+          <!-- Populated via app.js -->
         </div>
       </div>
     </div>
 
-    <!-- Active Mailbox Hub & 10-Day Vault Notice -->
-    <div class="neo-plate p-4 sm:p-5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <!-- 2. PRESERVED COLD STORAGE BANNER (Requested Feature) -->
+    <!-- Shown when an inbox is in preserved state (> 24 hours). Never deleted! -->
+    <div id="preservedStateBanner" class="hidden clay-plate p-4 sm:p-5 preserved-vault-glow relative overflow-hidden">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div class="flex items-center space-x-3.5">
+          <div class="w-11 h-11 rounded-2xl bg-cyan-950 border border-cyan-400/40 flex items-center justify-center text-cyan-300 shadow-lg shadow-cyan-500/20">
+            <!-- Snowflake SVG -->
+            <svg class="w-6 h-6 text-cyan-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="2" x2="12" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line>
+              <line x1="19.07" y1="4.93" x2="4.93" y2="19.07"></line>
+              <polyline points="10 4 12 2 14 4"></polyline>
+              <polyline points="10 20 12 22 14 20"></polyline>
+              <polyline points="4 10 2 12 4 14"></polyline>
+              <polyline points="20 10 22 12 20 14"></polyline>
+            </svg>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-sm font-bold text-white tracking-wide">Cold Preservation Vault Active</h3>
+              <span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">
+                &gt;24h Preserved State
+              </span>
+            </div>
+            <p class="text-xs text-gray-300 font-mono mt-0.5">
+              This mailbox entered cold storage after 24h. Email bodies are compressed to minimize disk usage. All messages are preserved with zero deletions and restored instantly on search!
+            </p>
+          </div>
+        </div>
+
+        <div class="shrink-0 flex items-center gap-2 text-xs font-mono text-cyan-400 font-bold bg-cyan-950/60 px-3 py-1.5 rounded-xl border border-cyan-500/30">
+          <span>🛡️ ZERO EMAILS EXPIRED</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. ACTIVE MAILBOX HUB -->
+    <div class="clay-plate p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div>
         <div class="flex items-center gap-2 mb-1.5">
           <span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-300 border border-cyan-500/30 uppercase font-bold tracking-wider">
             Active Mailbox
           </span>
-          <span class="text-[10px] font-mono text-gray-400 flex items-center gap-1">
-            <span>🔒</span> 10-Day SQLite Vault Active
+          <span id="activePreserveBadge" class="text-[10px] font-mono text-gray-400 flex items-center gap-1">
+            <!-- Shield SVG -->
+            <svg class="svg-icon-sm text-emerald-400" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+            <span id="activePreserveText">Infinite SQLite Vault Active</span>
           </span>
         </div>
         <div class="flex items-center gap-3">
           <span id="activeAddressDisplay" class="text-lg sm:text-xl font-mono font-black text-white tracking-tight select-all">
             loading...
           </span>
-          <button id="copyActiveAddressBtn" title="Copy Address to Clipboard" class="neo-btn px-2.5 py-1 rounded-lg text-xs font-mono text-gray-300 hover:text-cyan-400 transition flex items-center gap-1">
-            <span>📋</span> <span id="copyBtnText">Copy</span>
+          <button id="copyActiveAddressBtn" title="Copy Address to Clipboard" class="clay-btn px-2.5 py-1 text-xs font-mono text-gray-300 hover:text-cyan-400 gap-1">
+            <!-- Copy SVG -->
+            <svg class="svg-icon-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+            <span id="copyBtnText">Copy</span>
           </button>
-          <button id="openQrBtn" title="Show QR Code" class="neo-btn px-2.5 py-1 rounded-lg text-xs font-mono text-gray-300 hover:text-purple-400 transition">
-            <span>📱 QR</span>
+          <button id="openQrBtn" title="Show QR Code" class="clay-btn px-2.5 py-1 text-xs font-mono text-gray-300 hover:text-purple-400 gap-1">
+            <!-- QR SVG -->
+            <svg class="svg-icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
+            <span>QR</span>
           </button>
         </div>
       </div>
 
       <!-- Domain Switcher & Inbox Actions -->
       <div class="flex items-center flex-wrap gap-2">
-        <div class="neo-inset px-2.5 py-1 rounded-xl flex items-center gap-1.5 text-xs font-mono">
+        <div class="clay-inset px-2.5 py-1 flex items-center gap-1.5 text-xs font-mono">
           <span class="text-gray-500">Domain:</span>
           <select id="mainDomainSelect" class="bg-transparent text-cyan-300 outline-none cursor-pointer">
-            <!-- Injected -->
+            <!-- Dynamically populated from SQLite domains table -->
           </select>
         </div>
-        <button id="refreshInboxBtn" title="Check for New Messages" class="neo-btn px-3 py-1.5 rounded-xl text-xs font-mono text-gray-300 hover:text-white flex items-center gap-1">
-          <span>🔄</span> <span>Sync</span>
+        <button id="refreshInboxBtn" title="Check for New Messages" class="clay-btn px-3 py-1.5 text-xs font-mono text-gray-300 hover:text-white gap-1">
+          <!-- Refresh SVG -->
+          <svg class="svg-icon-sm" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+          <span>Sync</span>
         </button>
-        <button id="clearCurrentInboxBtn" title="Delete All Messages in Mailbox" class="neo-btn px-3 py-1.5 rounded-xl text-xs font-mono text-red-400 hover:text-red-300 hover:border-red-500/30">
-          <span>🗑️ Clear</span>
+        <button id="clearCurrentInboxBtn" title="Clear Mailbox Messages" class="clay-btn px-3 py-1.5 text-xs font-mono text-red-400 hover:text-red-300 hover:border-red-500/30 gap-1">
+          <!-- Trash SVG -->
+          <svg class="svg-icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          <span>Clear</span>
         </button>
       </div>
     </div>
 
-    <!-- Discord Verification Extractor Hero Banner (Auto-Extracted from emails) -->
-    <div id="discordBanner" class="hidden neo-plate p-4 sm:p-5 rounded-2xl border border-purple-500/40 relative overflow-hidden bg-gradient-to-r from-purple-950/40 via-indigo-950/30 to-cyber-800">
+    <!-- 4. DISCORD VERIFICATION OTP BANNER (Auto-Extracted from Emails) -->
+    <div id="discordBanner" class="hidden clay-plate p-4 sm:p-5 discord-otp-glow relative overflow-hidden">
       <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div class="flex items-center space-x-3.5">
-          <div class="w-11 h-11 rounded-xl bg-purple-600 flex items-center justify-center text-2xl shadow-lg shadow-purple-600/40">
-            🎮
+          <div class="w-11 h-11 rounded-2xl bg-purple-600 flex items-center justify-center text-white shadow-lg shadow-purple-600/40">
+            <!-- Discord Vector -->
+            <svg class="w-6 h-6 fill-current" viewBox="0 0 24 24">
+              <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/>
+            </svg>
           </div>
           <div>
             <div class="flex items-center gap-2">
@@ -215,26 +340,28 @@
 
         <!-- Extracted OTP & Quick Actions -->
         <div class="flex items-center flex-wrap gap-3">
-          <div id="discordCodeBox" class="hidden neo-inset px-4 py-2 rounded-xl flex items-center gap-3 border border-purple-500/40">
+          <div id="discordCodeBox" class="hidden clay-inset px-4 py-2 flex items-center gap-3 border border-purple-500/40">
             <span class="text-xs font-mono text-purple-300">CODE:</span>
             <span id="discordCodeText" class="text-xl font-mono font-black text-white tracking-widest select-all">------</span>
-            <button id="copyDiscordCodeBtn" class="neo-btn-cyber px-3 py-1 rounded-lg text-xs font-mono text-white font-bold flex items-center gap-1">
-              <span>📋</span> <span id="copyDiscordBtnText">Copy</span>
+            <button id="copyDiscordCodeBtn" class="clay-btn-purple px-3 py-1 text-xs font-mono text-white font-bold flex items-center gap-1">
+              <svg class="svg-icon-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              <span id="copyDiscordBtnText">Copy</span>
             </button>
           </div>
 
-          <a id="discordVerifyLink" href="#" target="_blank" rel="noopener noreferrer" class="hidden neo-btn-primary px-4 py-2 rounded-xl text-xs font-mono font-bold text-black flex items-center gap-1.5">
-            <span>🔗</span> <span>Verify Now</span>
+          <a id="discordVerifyLink" href="#" target="_blank" rel="noopener noreferrer" class="hidden clay-btn-primary px-4 py-2 text-xs font-mono font-bold flex items-center gap-1.5">
+            <svg class="svg-icon-sm text-black" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path></svg>
+            <span>Verify Now</span>
           </a>
         </div>
       </div>
     </div>
 
-    <!-- Main Inbound Split Deck (Feed & Viewer) -->
+    <!-- 5. MAIN INBOUND SPLIT DECK (Feed & Viewer) -->
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-[580px]">
 
       <!-- Left: Inbound Email Feed (5 Cols) -->
-      <div class="lg:col-span-5 neo-plate rounded-2xl flex flex-col overflow-hidden">
+      <div class="lg:col-span-5 clay-plate flex flex-col overflow-hidden">
         <!-- Feed Header with Search & Filter -->
         <div class="p-3.5 border-b border-white/5 space-y-2.5">
           <div class="flex items-center justify-between">
@@ -244,14 +371,15 @@
                 0
               </span>
             </div>
-            <span class="text-[11px] font-mono text-gray-500 flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Live 240h
+            <span class="text-[11px] font-mono text-gray-400 flex items-center gap-1">
+              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span> Live Vault
             </span>
           </div>
 
           <!-- Quick Search Bar -->
-          <div class="neo-inset px-3 py-1.5 rounded-xl flex items-center gap-2">
-            <span class="text-xs text-gray-500 font-mono">🔍</span>
+          <div class="clay-inset px-3 py-1.5 flex items-center gap-2">
+            <!-- Search SVG -->
+            <svg class="svg-icon-sm text-gray-500" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
             <input
               type="text"
               id="feedSearchInput"
@@ -268,8 +396,8 @@
 
         <!-- Empty State -->
         <div id="emptyFeedState" class="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3">
-          <div class="w-12 h-12 rounded-2xl neo-inset flex items-center justify-center text-2xl text-gray-500">
-            📬
+          <div class="w-12 h-12 rounded-2xl clay-inset flex items-center justify-center text-cyan-400">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
           </div>
           <div>
             <h4 class="text-sm font-mono font-bold text-gray-300">Awaiting Inbound Mail</h4>
@@ -281,12 +409,12 @@
       </div>
 
       <!-- Right: Message Content Viewer (7 Cols) -->
-      <div class="lg:col-span-7 neo-plate rounded-2xl flex flex-col overflow-hidden">
+      <div class="lg:col-span-7 clay-plate flex flex-col overflow-hidden">
         
         <!-- No Selection Placeholder -->
         <div id="noMessageSelected" class="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-3">
-          <div class="w-12 h-12 rounded-2xl neo-inset flex items-center justify-center text-2xl text-gray-500">
-            📄
+          <div class="w-12 h-12 rounded-2xl clay-inset flex items-center justify-center text-gray-500">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
           </div>
           <div>
             <h4 class="text-sm font-mono font-bold text-gray-300">No Message Selected</h4>
@@ -305,11 +433,13 @@
                 (Subject)
               </h2>
               <div class="flex items-center gap-1.5 shrink-0">
-                <a id="downloadEmlBtn" href="#" class="neo-btn px-2.5 py-1 rounded-lg text-xs font-mono text-cyan-300 hover:text-white flex items-center gap-1" title="Download .eml">
-                  <span>📥</span> <span class="hidden sm:inline">.eml</span>
+                <a id="downloadEmlBtn" href="#" class="clay-btn px-2.5 py-1 text-xs font-mono text-cyan-300 hover:text-white gap-1" title="Download .eml">
+                  <!-- Download SVG -->
+                  <svg class="svg-icon-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                  <span class="hidden sm:inline">.eml</span>
                 </a>
-                <button id="deleteMessageBtn" class="neo-btn px-2.5 py-1 rounded-lg text-xs font-mono text-red-400 hover:text-red-300" title="Delete Message">
-                  <span>🗑️</span>
+                <button id="deleteMessageBtn" class="clay-btn px-2.5 py-1 text-xs font-mono text-red-400 hover:text-red-300" title="Delete Message">
+                  <svg class="svg-icon-sm" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
                 </button>
               </div>
             </div>
@@ -329,7 +459,9 @@
             <!-- Attachments Row -->
             <div id="attachmentsBar" class="hidden pt-2 border-t border-white/5 flex flex-wrap items-center gap-2">
               <span class="text-[11px] font-mono text-gray-400 flex items-center gap-1">
-                <span>📎</span> Attachments:
+                <!-- Paperclip SVG -->
+                <svg class="svg-icon-sm text-cyan-400" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                <span>Attachments:</span>
               </span>
               <div id="attachmentsList" class="flex flex-wrap gap-1.5">
                 <!-- Injected -->
@@ -338,16 +470,16 @@
 
             <!-- View Tabs (HTML, Text, Headers, Raw RFC822) -->
             <div class="flex items-center space-x-1.5 pt-2">
-              <button class="view-tab neo-pill px-3 py-1 rounded-lg text-xs font-mono text-cyan-400 font-bold border-cyan-500/40" data-tab="html">
+              <button class="view-tab clay-pill px-3 py-1 text-xs font-mono text-cyan-400 font-bold border-cyan-500/40" data-tab="html">
                 HTML View
               </button>
-              <button class="view-tab neo-btn px-3 py-1 rounded-lg text-xs font-mono text-gray-400 hover:text-white" data-tab="text">
+              <button class="view-tab clay-btn px-3 py-1 text-xs font-mono text-gray-400 hover:text-white" data-tab="text">
                 Plain Text
               </button>
-              <button class="view-tab neo-btn px-3 py-1 rounded-lg text-xs font-mono text-gray-400 hover:text-white" data-tab="headers">
-                Headers
+              <button class="view-tab clay-btn px-3 py-1 text-xs font-mono text-gray-400 hover:text-white" data-tab="headers">
+                Headers (Shielded)
               </button>
-              <button class="view-tab neo-btn px-3 py-1 rounded-lg text-xs font-mono text-gray-400 hover:text-white" data-tab="raw">
+              <button class="view-tab clay-btn px-3 py-1 text-xs font-mono text-gray-400 hover:text-white" data-tab="raw">
                 Raw RFC822
               </button>
             </div>
@@ -361,117 +493,270 @@
             </div>
 
             <!-- Plain Text Pane -->
-            <div id="paneText" class="hidden w-full h-full min-h-[400px] overflow-auto font-mono text-xs text-gray-200 whitespace-pre-wrap p-4 neo-inset rounded-xl"></div>
+            <div id="paneText" class="hidden w-full h-full min-h-[400px] overflow-auto font-mono text-xs text-gray-200 whitespace-pre-wrap p-4 clay-inset"></div>
 
-            <!-- Headers Pane -->
-            <div id="paneHeaders" class="hidden w-full h-full min-h-[400px] overflow-auto font-mono text-xs text-cyan-300 whitespace-pre-wrap p-4 neo-inset rounded-xl"></div>
+            <!-- Headers Pane (Masked IP addresses) -->
+            <div id="paneHeaders" class="hidden w-full h-full min-h-[400px] overflow-auto font-mono text-xs text-cyan-300 whitespace-pre-wrap p-4 clay-inset"></div>
 
             <!-- Raw Pane -->
-            <div id="paneRaw" class="hidden w-full h-full min-h-[400px] overflow-auto font-mono text-xs text-gray-300 whitespace-pre-wrap p-4 neo-inset rounded-xl"></div>
+            <div id="paneRaw" class="hidden w-full h-full min-h-[400px] overflow-auto font-mono text-xs text-gray-300 whitespace-pre-wrap p-4 clay-inset"></div>
           </div>
         </div>
 
       </div>
     </div>
-  </section>
+  </main>
 
   <!-- ==============================================================================
-       MODALS: ADMIN PORTAL, API CHECKER, QR CODE
+       MODALS: ADMIN VAULT (OWNER ONLY), DISCORD LOGIN, API TESTER, QR CODE
   ============================================================================== -->
 
-  <!-- 1. ADMIN PORTAL & API KEY VAULT MODAL (Admin Only via Login) -->
-  <div id="adminModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
-    <div class="neo-plate w-full max-w-2xl rounded-2xl overflow-hidden border border-purple-500/30 flex flex-col max-h-[90vh]">
-      <!-- Header -->
-      <div class="p-5 border-b border-white/5 flex items-center justify-between">
-        <div class="flex items-center space-x-2.5">
-          <span class="text-xl">🛡️</span>
+  <!-- 1. FULL SECURED ADMIN VAULT DASHBOARD (Owner ID Access, Multi-Domain, Zero IP Leak) -->
+  <div id="adminModal" class="hidden fixed inset-0 z-50 clay-backdrop flex items-center justify-center p-4">
+    <div class="clay-plate w-full max-w-4xl rounded-3xl overflow-hidden border border-amber-500/30 flex flex-col max-h-[92vh]">
+      
+      <!-- Admin Modal Header -->
+      <div class="p-5 border-b border-white/5 flex items-center justify-between bg-gradient-to-r from-amber-950/20 via-vault-900 to-vault-950">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300">
+            <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+          </div>
           <div>
-            <h3 class="text-sm font-mono font-bold text-white">Admin Portal & API Key Vault</h3>
-            <p class="text-[11px] font-mono text-gray-400">Restricted programmatic key generator</p>
+            <div class="flex items-center gap-2">
+              <h3 class="text-sm font-mono font-bold text-white">Crown Admin Vault & Domain Control</h3>
+              <span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold uppercase">OWNER ACCESS</span>
+            </div>
+            <p class="text-[11px] font-mono text-gray-400">Cryptographically secured • Dynamic multi-domain • Zero credentials leaked</p>
           </div>
         </div>
         <button id="closeAdminModalBtn" class="text-gray-400 hover:text-white text-lg font-mono px-2 py-1">✕</button>
       </div>
 
-      <!-- State A: Login Form (If not authenticated) -->
-      <div id="adminLoginFormContainer" class="p-6 space-y-4">
-        <p class="text-xs text-gray-400 font-mono">
-          Enter your admin password to view and generate private API keys. Default: <code class="text-cyan-300">cyberadmin2026</code> (configured via .env).
-        </p>
-        <form id="adminLoginForm" class="space-y-3">
-          <div class="neo-inset px-3.5 py-2 rounded-xl flex items-center">
-            <span class="text-xs text-gray-500 font-mono mr-2">🔑</span>
-            <input
-              type="password"
-              id="adminPasswordInput"
-              placeholder="Admin password"
-              class="w-full bg-transparent text-sm font-mono text-white outline-none"
-              required
-            >
-          </div>
-          <div id="adminLoginError" class="hidden text-xs font-mono text-red-400"></div>
-          <button type="submit" class="w-full neo-btn-cyber py-2.5 rounded-xl text-xs font-mono font-bold text-white">
-            Authenticate Session
-          </button>
-        </form>
+      <!-- Admin Dashboard Navigation Tabs -->
+      <div class="px-6 pt-3 pb-1 border-b border-white/5 flex items-center gap-2 overflow-x-auto text-xs font-mono">
+        <button class="admin-tab clay-pill px-3.5 py-1.5 text-amber-300 border-amber-500/40 font-bold" data-tab="domains">
+          🌐 Multi-Domains
+        </button>
+        <button class="admin-tab clay-btn px-3.5 py-1.5 text-gray-400 hover:text-white" data-tab="stats">
+          ❄️ Cold Vault & Stats
+        </button>
+        <button class="admin-tab clay-btn px-3.5 py-1.5 text-gray-400 hover:text-white" data-tab="keys">
+          🔑 API Key Vault
+        </button>
+        <button class="admin-tab clay-btn px-3.5 py-1.5 text-gray-400 hover:text-white" data-tab="security">
+          🛡️ Shield & Security
+        </button>
       </div>
 
-      <!-- State B: Admin Dashboard & Key Vault (When Authenticated) -->
-      <div id="adminKeyVaultContainer" class="hidden p-6 space-y-5 overflow-y-auto">
-        <!-- Key Generation Form -->
-        <div class="neo-inset p-4 rounded-xl space-y-3 border border-white/5">
-          <h4 class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">Generate New API Key</h4>
+      <!-- Admin Tab 1: Multi-Domain Management (Requested Feature) -->
+      <div id="adminTabDomains" class="admin-pane p-6 space-y-5 overflow-y-auto">
+        <!-- Add Domain Form -->
+        <div class="clay-inset p-4 rounded-2xl space-y-3 border border-white/5">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider flex items-center gap-2">
+              <span>🌐</span> Add New Domain to SMTP & Web Vault
+            </h4>
+            <span class="text-[10px] font-mono text-gray-400">Instantly active on Port 25</span>
+          </div>
+
+          <form id="addDomainForm" class="flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              id="newDomainInput"
+              placeholder="e.g. crwnmail.com or temp.domain.com"
+              class="flex-1 bg-transparent border border-white/10 rounded-xl px-3.5 py-2 text-xs font-mono text-white outline-none focus:border-cyan-400"
+              required
+            >
+            <label class="flex items-center gap-2 text-xs font-mono text-gray-300 px-2 cursor-pointer">
+              <input type="checkbox" id="newDomainDefaultCheck" class="rounded bg-black border-gray-600 text-cyan-500">
+              <span>Set as Default</span>
+            </label>
+            <button type="submit" class="clay-btn-primary px-5 py-2 text-xs font-mono font-bold text-black shrink-0">
+              Add Domain
+            </button>
+          </form>
+
+          <!-- DNS MX Guide Accordion -->
+          <div class="p-3 rounded-xl bg-black/40 border border-white/5 text-xs font-mono space-y-1.5 text-gray-400">
+            <div class="text-gray-300 font-bold flex items-center gap-1.5">
+              <span>📋</span> <span>DNS MX Configuration Guide:</span>
+            </div>
+            <div class="text-[11px] space-y-1">
+              <div>• <strong>Host:</strong> <code class="text-cyan-300">@</code> or your subdomain</div>
+              <div>• <strong>Type:</strong> <code class="text-cyan-300">MX</code></div>
+              <div>• <strong>Priority:</strong> <code class="text-cyan-300">10</code></div>
+              <div>• <strong>Value / Target:</strong> Point to this server's public hostname (e.g. <code class="text-cyan-300">mail.yourdomain.com</code>)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Active Domains List -->
+        <div class="space-y-2">
+          <h4 class="text-xs font-mono font-bold text-gray-300 uppercase tracking-wider">Active Vault Domains</h4>
+          <div id="activeDomainsList" class="space-y-2">
+            <!-- Dynamically populated via app.js -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Tab 2: Cold Vault & System Stats -->
+      <div id="adminTabStats" class="admin-pane hidden p-6 space-y-5 overflow-y-auto">
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+          <div class="clay-inset p-4 rounded-xl text-center space-y-1">
+            <div class="text-2xl font-mono font-bold text-white" id="statMailboxes">0</div>
+            <div class="text-[11px] font-mono text-gray-400">Total Inboxes</div>
+          </div>
+          <div class="clay-inset p-4 rounded-xl text-center space-y-1">
+            <div class="text-2xl font-mono font-bold text-cyan-400" id="statPreserved">0</div>
+            <div class="text-[11px] font-mono text-gray-400">Preserved Inboxes (&gt;24h)</div>
+          </div>
+          <div class="clay-inset p-4 rounded-xl text-center space-y-1">
+            <div class="text-2xl font-mono font-bold text-emerald-400" id="statMessages">0</div>
+            <div class="text-[11px] font-mono text-gray-400">Total Saved Messages</div>
+          </div>
+          <div class="clay-inset p-4 rounded-xl text-center space-y-1">
+            <div class="text-2xl font-mono font-bold text-purple-400" id="statCompressed">0</div>
+            <div class="text-[11px] font-mono text-gray-400">Compressed Space-Savers</div>
+          </div>
+        </div>
+
+        <!-- Preservation Controls -->
+        <div class="clay-inset p-4 rounded-2xl space-y-3 border border-white/5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h4 class="text-xs font-mono font-bold text-white">Cold Preservation & Zero-Deletion Engine</h4>
+              <p class="text-[11px] font-mono text-gray-400">Runs automatically every 30m. Inboxes older than 24h are archived and compressed.</p>
+            </div>
+            <button id="triggerPreserveBtn" class="clay-btn px-4 py-2 text-xs font-mono text-cyan-300 hover:text-white">
+              Run Compression Pass Now
+            </button>
+          </div>
+          <div id="preserveStatusAlert" class="hidden text-xs font-mono text-emerald-400"></div>
+        </div>
+      </div>
+
+      <!-- Admin Tab 3: API Key Vault -->
+      <div id="adminTabKeys" class="admin-pane hidden p-6 space-y-5 overflow-y-auto">
+        <!-- Generate Key Form -->
+        <div class="clay-inset p-4 rounded-2xl space-y-3 border border-white/5">
+          <h4 class="text-xs font-mono font-bold text-cyan-300 uppercase tracking-wider">Generate Secure API Key</h4>
           <form id="createApiKeyForm" class="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
               id="newKeyNameInput"
-              placeholder="Key label (e.g. Discord Bot / QA Runner)"
-              class="flex-1 bg-transparent border border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono text-white outline-none"
+              placeholder="Key label (e.g. Discord Bot / Automated Script)"
+              class="flex-1 bg-transparent border border-white/10 rounded-xl px-3.5 py-1.5 text-xs font-mono text-white outline-none"
               required
             >
-            <select id="newKeyPermSelect" class="bg-gray-900 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs font-mono text-gray-300 outline-none">
+            <select id="newKeyPermSelect" class="bg-gray-900 border border-white/10 rounded-xl px-3 py-1.5 text-xs font-mono text-gray-300 outline-none">
               <option value="full">Full Access</option>
               <option value="read">Read Only</option>
             </select>
-            <button type="submit" class="neo-btn-primary px-4 py-1.5 rounded-lg text-xs font-mono font-bold text-black shrink-0">
-              Generate
+            <button type="submit" class="clay-btn-primary px-4 py-1.5 text-xs font-mono font-bold text-black shrink-0">
+              Generate Key
             </button>
           </form>
 
-          <!-- Newly generated key display alert -->
-          <div id="newKeyAlert" class="hidden p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-xs font-mono space-y-1">
-            <div class="text-emerald-400 font-bold">✓ New API Key Created! Copy it now (cannot be viewed again):</div>
+          <!-- Newly generated key alert -->
+          <div id="newKeyAlert" class="hidden p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs font-mono space-y-1">
+            <div class="text-emerald-400 font-bold">✓ New Key Created! Copy now (it cannot be retrieved again):</div>
             <div class="flex items-center gap-2 mt-1">
               <input id="newKeyValueDisplay" readonly class="flex-1 bg-black/60 px-2 py-1 rounded text-cyan-300 select-all border border-emerald-500/20 text-[11px]">
-              <button id="copyNewKeyBtn" class="neo-btn px-2.5 py-1 rounded text-xs font-mono text-white">Copy</button>
+              <button id="copyNewKeyBtn" class="clay-btn px-2.5 py-1 text-xs font-mono text-white">Copy</button>
             </div>
           </div>
         </div>
 
         <!-- Active Keys List -->
         <div class="space-y-2">
-          <div class="flex items-center justify-between">
-            <h4 class="text-xs font-mono font-bold text-gray-300 uppercase tracking-wider">Active Vault Keys</h4>
-            <button id="adminLogoutBtn" class="text-[11px] font-mono text-red-400 hover:underline">Logout</button>
-          </div>
+          <h4 class="text-xs font-mono font-bold text-gray-300 uppercase tracking-wider">Active API Keys</h4>
           <div id="activeKeysList" class="space-y-1.5">
-            <!-- Injected via app.js -->
+            <!-- Injected -->
           </div>
         </div>
+      </div>
+
+      <!-- Admin Tab 4: Security & IP Shielding Overview -->
+      <div id="adminTabSecurity" class="admin-pane hidden p-6 space-y-4 overflow-y-auto text-xs font-mono">
+        <div class="clay-inset p-4 rounded-2xl space-y-3">
+          <div class="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+            <svg class="svg-icon" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><polyline points="9 11 12 14 22 4"></polyline></svg>
+            <span>Anti-Leak & Shielding Active</span>
+          </div>
+          <p class="text-gray-300">
+            This deployment is hardened against data scraping and credential leaks:
+          </p>
+          <ul class="space-y-1.5 text-gray-400 list-disc list-inside">
+            <li><strong class="text-white">Zero IP Exposure:</strong> All internal/upstream server and relay IP addresses are masked in headers, logs, and response envelopes.</li>
+            <li><strong class="text-white">Discord Owner ID Verification:</strong> Access to this control dashboard is restricted to Discord User IDs matching <code class="text-amber-300">OWNER_IDS</code>.</li>
+            <li><strong class="text-white">Secure HttpOnly Cookies:</strong> Admin sessions use cryptographically signed <code class="text-cyan-300">SameSite=Strict, HttpOnly</code> cookies. No admin passwords or tokens are stored in Chrome Web Data (LocalStorage).</li>
+            <li><strong class="text-white">No Message Expiration:</strong> All inbound mail is vaulted permanently. Inboxes &gt;24 hours enter space-saving cold storage.</li>
+          </ul>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- 2. DISCORD AUTHENTICATION MODAL -->
+  <div id="discordAuthModal" class="hidden fixed inset-0 z-50 clay-backdrop flex items-center justify-center p-4">
+    <div class="clay-plate w-full max-w-md rounded-3xl p-6 border border-purple-500/30 text-center space-y-4">
+      <div class="flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+          <div class="w-8 h-8 rounded-xl bg-purple-600 flex items-center justify-center text-white">
+            <svg class="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+          </div>
+          <h3 class="text-sm font-mono font-bold text-white">Discord Login Required</h3>
+        </div>
+        <button id="closeDiscordAuthModalBtn" class="text-gray-400 hover:text-white text-lg font-mono">✕</button>
+      </div>
+
+      <p class="text-xs text-gray-300 font-mono text-left">
+        To prevent bot spam and secure server storage, you must log in with Discord before creating custom or random mailboxes.
+      </p>
+
+      <!-- Option A: Official Discord OAuth -->
+      <div id="discordOAuthOption" class="pt-2">
+        <a id="discordOAuthBtnLink" href="#" class="w-full clay-btn-discord py-3 text-xs font-mono font-bold flex items-center justify-center gap-2">
+          <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.929 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.894.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+          <span>Continue with Discord</span>
+        </a>
+      </div>
+
+      <!-- Option B: Direct Discord ID (Self-Hosted / Dev mode fallback) -->
+      <div class="pt-3 border-t border-white/5 space-y-2 text-left">
+        <div class="text-[11px] font-mono text-gray-400">Self-Hosted / Dev Login (by User ID):</div>
+        <form id="devLoginForm" class="space-y-2">
+          <input
+            type="text"
+            id="devDiscordIdInput"
+            placeholder="Your Discord User ID (e.g. 123456789012345678)"
+            class="w-full clay-inset px-3 py-2 text-xs font-mono text-white outline-none"
+            required
+          >
+          <input
+            type="text"
+            id="devUsernameInput"
+            placeholder="Username (optional, e.g. CrownAdmin)"
+            class="w-full clay-inset px-3 py-2 text-xs font-mono text-white outline-none"
+          >
+          <button type="submit" class="w-full clay-btn py-2 text-xs font-mono text-cyan-300 font-bold hover:text-white">
+            Direct Discord Login
+          </button>
+        </form>
       </div>
     </div>
   </div>
 
-  <!-- 2. INTERACTIVE API CHECKER / TESTER MODAL (Requested Feature) -->
-  <div id="apiTesterModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
-    <div class="neo-plate w-full max-w-3xl rounded-2xl overflow-hidden border border-cyan-500/30 flex flex-col max-h-[90vh]">
+  <!-- 3. INTERACTIVE API CHECKER / TESTER MODAL -->
+  <div id="apiTesterModal" class="hidden fixed inset-0 z-50 clay-backdrop flex items-center justify-center p-4">
+    <div class="clay-plate w-full max-w-3xl rounded-3xl overflow-hidden border border-cyan-500/30 flex flex-col max-h-[90vh]">
       <!-- Header -->
       <div class="p-5 border-b border-white/5 flex items-center justify-between">
         <div class="flex items-center space-x-2.5">
           <span class="text-xl">🔌</span>
           <div>
-            <h3 class="text-sm font-mono font-bold text-white">Interactive Cyber API Checker</h3>
+            <h3 class="text-sm font-mono font-bold text-white">Crown API Checker & Debugger</h3>
             <p class="text-[11px] font-mono text-gray-400">Live endpoint inspection, key validation & cURL generator</p>
           </div>
         </div>
@@ -480,17 +765,16 @@
 
       <!-- Controls & Testing Deck -->
       <div class="p-6 space-y-4 overflow-y-auto">
-        
         <!-- Endpoint Selection -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label class="block text-[11px] font-mono text-gray-400 mb-1">Target Endpoint:</label>
-            <select id="testerEndpointSelect" class="w-full neo-inset px-3 py-2 rounded-xl text-xs font-mono text-cyan-300 outline-none cursor-pointer">
+            <select id="testerEndpointSelect" class="w-full clay-inset px-3 py-2 text-xs font-mono text-cyan-300 outline-none cursor-pointer">
               <option value="messages">GET /api/messages/:address (Inbox Messages)</option>
               <option value="discord">GET /api/discord/:address (Discord OTP Extractor)</option>
               <option value="check-key">POST /api/admin/check-key (Verify API Key)</option>
-              <option value="stats">GET /api/stats (System Metrics)</option>
-              <option value="create-inbox">POST /api/inbox/create (Register Mailbox)</option>
+              <option value="stats">GET /api/stats (Vault Metrics)</option>
+              <option value="domains">GET /api/domains (Configured Domains)</option>
             </select>
           </div>
 
@@ -499,8 +783,8 @@
             <input
               type="text"
               id="testerAddressInput"
-              placeholder="e.g. cfjf7byh@rizzcord.site"
-              class="w-full neo-inset px-3 py-2 rounded-xl text-xs font-mono text-white outline-none"
+              placeholder="e.g. crwnmail24@crwnmail.com"
+              class="w-full clay-inset px-3 py-2 text-xs font-mono text-white outline-none"
             >
           </div>
         </div>
@@ -511,18 +795,18 @@
           <input
             type="text"
             id="testerApiKeyInput"
-            placeholder="ct_live_... (optional for public routes, required for key checker)"
-            class="w-full neo-inset px-3 py-2 rounded-xl text-xs font-mono text-white outline-none"
+            placeholder="crwn_... (optional for public routes, required for key checker)"
+            class="w-full clay-inset px-3 py-2 text-xs font-mono text-white outline-none"
           >
         </div>
 
         <!-- Run Button & cURL Copy -->
         <div class="flex items-center gap-3">
-          <button id="runApiTestBtn" class="neo-btn-primary px-5 py-2 rounded-xl text-xs font-mono font-bold text-black flex items-center gap-1.5">
+          <button id="runApiTestBtn" class="clay-btn-primary px-5 py-2 text-xs font-mono font-bold flex items-center gap-1.5">
             <span>⚡</span>
             <span>SEND REQUEST</span>
           </button>
-          <button id="copyCurlBtn" class="neo-btn px-4 py-2 rounded-xl text-xs font-mono text-gray-300 hover:text-white flex items-center gap-1.5">
+          <button id="copyCurlBtn" class="clay-btn px-4 py-2 text-xs font-mono text-gray-300 hover:text-white flex items-center gap-1.5">
             <span>📋</span>
             <span>Copy cURL</span>
           </button>
@@ -537,34 +821,35 @@
               <span id="testerLatency" class="text-cyan-400">0ms</span>
             </div>
           </div>
-          <pre id="testerResponseBox" class="neo-inset p-4 rounded-xl text-xs font-mono text-gray-300 max-h-64 overflow-auto whitespace-pre-wrap select-all">Click "SEND REQUEST" to inspect live response...</pre>
+          <pre id="testerResponseBox" class="clay-inset p-4 text-xs font-mono text-gray-300 max-h-64 overflow-auto whitespace-pre-wrap select-all">Click "SEND REQUEST" to inspect live response...</pre>
         </div>
-
       </div>
     </div>
   </div>
 
-  <!-- 3. QR CODE MODAL -->
-  <div id="qrModal" class="hidden fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4">
-    <div class="neo-plate w-full max-w-sm rounded-2xl p-6 text-center space-y-4 border border-cyan-500/30">
+  <!-- 4. QR CODE MODAL -->
+  <div id="qrModal" class="hidden fixed inset-0 z-50 clay-backdrop flex items-center justify-center p-4">
+    <div class="clay-plate w-full max-w-sm rounded-3xl p-6 text-center space-y-4 border border-cyan-500/30">
       <div class="flex justify-between items-center">
         <h3 class="text-sm font-mono font-bold text-white">Mobile Scan QR</h3>
         <button id="closeQrModalBtn" class="text-gray-400 hover:text-white text-lg font-mono">✕</button>
       </div>
-      <div class="flex justify-center p-3 neo-inset rounded-xl bg-white">
+      <div class="flex justify-center p-4 clay-inset bg-white rounded-2xl">
         <canvas id="qrCanvas"></canvas>
       </div>
-      <div class="text-xs font-mono text-cyan-300 break-all" id="qrAddressText"></div>
+      <div class="text-xs font-mono text-cyan-300 break-all select-all" id="qrAddressText"></div>
     </div>
   </div>
 
   <!-- Footer -->
   <footer class="mt-auto py-5 px-6 border-t border-white/5 text-center text-xs font-mono text-gray-500 flex flex-wrap items-center justify-center gap-4">
-    <span>⚡ CyberTemp v3.0</span>
+    <span>👑 Crown Mail Vault v4.0</span>
     <span>•</span>
-    <span>Conserved for 10 Days in SQLite</span>
+    <span>Preserved After 24h</span>
     <span>•</span>
-    <span>Direct Port 25 SMTP</span>
+    <span>Zero Deletions</span>
+    <span>•</span>
+    <span>Port 25 Inbound SMTP</span>
   </footer>
 
   <script src="/app.js"></script>

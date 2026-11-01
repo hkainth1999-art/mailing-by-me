@@ -1,15 +1,32 @@
-import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import { DATA_DIR, RETENTION_HOURS, ADMIN_PASSWORD } from './config.js';
+import zlib from 'zlib';
+import { DATA_DIR, INITIAL_DOMAINS, OWNER_IDS } from './config.js';
 
 let db = null;
 let memoryStore = {
-  mailboxes: new Map(), // address -> { address, created_at }
+  domains: new Map(), // domain -> { domain, is_default, created_at }
+  mailboxes: new Map(), // address -> { address, discord_user_id, discord_username, created_at, last_accessed_at, is_preserved, preserved_at }
   messages: [],
-  apiKeys: new Map(), // id -> keyObj
-  adminSessions: new Set(),
+  apiKeys: new Map(),
+  discordSessions: new Map(),
 };
+
+// In-memory domain cache for sub-microsecond SMTP check
+let cachedDomains = [];
+
+function refreshDomainCache() {
+  if (db) {
+    try {
+      const rows = db.prepare('SELECT domain FROM domains ORDER BY is_default DESC, domain ASC').all();
+      cachedDomains = rows.map((r) => r.domain.toLowerCase().trim());
+    } catch {
+      cachedDomains = Array.from(memoryStore.domains.keys());
+    }
+  } else {
+    cachedDomains = Array.from(memoryStore.domains.keys());
+  }
+}
 
 try {
   const { DatabaseSync } = await import('node:sqlite');
@@ -19,9 +36,20 @@ try {
   db.exec(`
     PRAGMA journal_mode = WAL;
     
+    CREATE TABLE IF NOT EXISTS domains (
+      domain TEXT PRIMARY KEY,
+      is_default INTEGER DEFAULT 0,
+      created_at INTEGER
+    );
+
     CREATE TABLE IF NOT EXISTS mailboxes (
       address TEXT PRIMARY KEY,
-      created_at INTEGER
+      discord_user_id TEXT,
+      discord_username TEXT,
+      created_at INTEGER,
+      last_accessed_at INTEGER,
+      is_preserved INTEGER DEFAULT 0,
+      preserved_at INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS messages (
@@ -40,7 +68,8 @@ try {
       discord_code TEXT,
       discord_url TEXT,
       received_at INTEGER,
-      is_read INTEGER DEFAULT 0
+      is_read INTEGER DEFAULT 0,
+      is_compressed INTEGER DEFAULT 0
     );
 
     CREATE TABLE IF NOT EXISTS api_keys (
@@ -53,8 +82,13 @@ try {
       last_used_at INTEGER
     );
 
-    CREATE TABLE IF NOT EXISTS admin_sessions (
+    CREATE TABLE IF NOT EXISTS discord_sessions (
       token TEXT PRIMARY KEY,
+      user_id TEXT,
+      username TEXT,
+      global_name TEXT,
+      avatar TEXT,
+      is_owner INTEGER DEFAULT 0,
       created_at INTEGER,
       expires_at INTEGER
     );
@@ -62,49 +96,271 @@ try {
     CREATE INDEX IF NOT EXISTS idx_inbox_received ON messages(inbox_address, received_at DESC);
     CREATE INDEX IF NOT EXISTS idx_mailboxes_created ON mailboxes(created_at DESC);
   `);
+
+  // Safe schema migrations for existing databases
+  const runMigration = (sql) => {
+    try {
+      db.exec(sql);
+    } catch (e) {
+      // Column may already exist
+    }
+  };
+
+  runMigration('ALTER TABLE mailboxes ADD COLUMN discord_user_id TEXT;');
+  runMigration('ALTER TABLE mailboxes ADD COLUMN discord_username TEXT;');
+  runMigration('ALTER TABLE mailboxes ADD COLUMN last_accessed_at INTEGER;');
+  runMigration('ALTER TABLE mailboxes ADD COLUMN is_preserved INTEGER DEFAULT 0;');
+  runMigration('ALTER TABLE mailboxes ADD COLUMN preserved_at INTEGER;');
+  runMigration('ALTER TABLE messages ADD COLUMN is_compressed INTEGER DEFAULT 0;');
+  runMigration('CREATE INDEX IF NOT EXISTS idx_mailboxes_discord ON mailboxes(discord_user_id);');
+
+  // Seed initial domains from config if domains table is empty
+  const count = db.prepare('SELECT COUNT(*) as count FROM domains').get()?.count || 0;
+  if (count === 0) {
+    const insertDomain = db.prepare('INSERT OR IGNORE INTO domains (domain, is_default, created_at) VALUES (?, ?, ?)');
+    INITIAL_DOMAINS.forEach((domain, idx) => {
+      insertDomain.run(domain.toLowerCase().trim(), idx === 0 ? 1 : 0, Date.now());
+    });
+  }
+
+  refreshDomainCache();
   console.log('✅ SQLite Cyber Vault initialized at:', dbPath);
 } catch (err) {
-  console.warn('⚠️ node:sqlite not available, using in-memory store:', err.message);
+  console.warn('⚠️ node:sqlite not available or error, falling back to memory store:', err.message);
   db = null;
+  INITIAL_DOMAINS.forEach((domain, idx) => {
+    const clean = domain.toLowerCase().trim();
+    memoryStore.domains.set(clean, { domain: clean, is_default: idx === 0 ? 1 : 0, created_at: Date.now() });
+  });
+  refreshDomainCache();
+}
+
+// --- IP & Header Masking Helper ---
+// Masks internal or external IP addresses from being exposed in headers, inspectors or logs
+export function maskIpAddresses(str) {
+  if (!str || typeof str !== 'string') return str;
+  // Match IPv4
+  const ipv4Regex = /\b(?:\d{1,3}\.){3}\d{1,3}\b/g;
+  // Match IPv6
+  const ipv6Regex = /(?:[0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}|(?:[0-9a-fA-F]{1,4}:){1,7}:|:(?::[0-9a-fA-F]{1,4}){1,7}/g;
+  return str.replace(ipv4Regex, 'shielded-relay.vault').replace(ipv6Regex, 'shielded-ipv6.vault');
+}
+
+export function sanitizeHeaders(headersObj) {
+  if (!headersObj || typeof headersObj !== 'object') return {};
+  const sanitized = {};
+  for (const [key, value] of Object.entries(headersObj)) {
+    if (typeof value === 'string') {
+      sanitized[key] = maskIpAddresses(value);
+    } else if (Array.isArray(value)) {
+      sanitized[key] = value.map((item) => (typeof item === 'string' ? maskIpAddresses(item) : item));
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
+// --- Domain Operations ---
+
+export function getDomains() {
+  if (db) {
+    const rows = db.prepare('SELECT domain, is_default, created_at FROM domains ORDER BY is_default DESC, domain ASC').all();
+    return rows;
+  }
+  return Array.from(memoryStore.domains.values()).sort((a, b) => b.is_default - a.is_default);
+}
+
+export function getDomainNames() {
+  return cachedDomains.length > 0 ? cachedDomains : INITIAL_DOMAINS;
+}
+
+export function addDomain(domainName, isDefault = false) {
+  const clean = domainName.toLowerCase().trim().replace(/^@/, '');
+  if (!clean || !clean.includes('.')) {
+    throw new Error('Invalid domain format. Example: crwnmail.com');
+  }
+
+  const now = Date.now();
+  if (db) {
+    if (isDefault) {
+      db.prepare('UPDATE domains SET is_default = 0').run();
+    }
+    const stmt = db.prepare('INSERT OR REPLACE INTO domains (domain, is_default, created_at) VALUES (?, ?, ?)');
+    stmt.run(clean, isDefault ? 1 : 0, now);
+  } else {
+    if (isDefault) {
+      for (const d of memoryStore.domains.values()) d.is_default = 0;
+    }
+    memoryStore.domains.set(clean, { domain: clean, is_default: isDefault ? 1 : 0, created_at: now });
+  }
+
+  refreshDomainCache();
+  return { domain: clean, is_default: isDefault ? 1 : 0, created_at: now };
+}
+
+export function removeDomain(domainName) {
+  const clean = domainName.toLowerCase().trim();
+  const all = getDomains();
+  if (all.length <= 1) {
+    throw new Error('Cannot delete the last remaining domain.');
+  }
+
+  if (db) {
+    db.prepare('DELETE FROM domains WHERE domain = ?').run(clean);
+    // If deleted domain was default, set another domain as default
+    const hasDefault = db.prepare('SELECT domain FROM domains WHERE is_default = 1 LIMIT 1').get();
+    if (!hasDefault) {
+      db.prepare('UPDATE domains SET is_default = 1 WHERE domain = (SELECT domain FROM domains LIMIT 1)').run();
+    }
+  } else {
+    memoryStore.domains.delete(clean);
+    let hasDef = false;
+    for (const d of memoryStore.domains.values()) {
+      if (d.is_default) hasDef = true;
+    }
+    if (!hasDef && memoryStore.domains.size > 0) {
+      memoryStore.domains.values().next().value.is_default = 1;
+    }
+  }
+
+  refreshDomainCache();
+  return { success: true, domain: clean };
+}
+
+export function setDefaultDomain(domainName) {
+  const clean = domainName.toLowerCase().trim();
+  if (db) {
+    db.prepare('UPDATE domains SET is_default = 0').run();
+    db.prepare('UPDATE domains SET is_default = 1 WHERE domain = ?').run(clean);
+  } else {
+    for (const d of memoryStore.domains.values()) {
+      d.is_default = d.domain === clean ? 1 : 0;
+    }
+  }
+  refreshDomainCache();
+  return { success: true, default_domain: clean };
+}
+
+export function isDomainAllowed(domainName) {
+  if (!domainName) return false;
+  const clean = domainName.toLowerCase().trim();
+  return cachedDomains.includes(clean) || cachedDomains.includes('*');
 }
 
 // --- Mailbox Operations ---
 
-export function saveMailbox(address) {
+export function saveMailbox(address, discordUserId = null, discordUsername = null) {
   const cleanAddr = address.toLowerCase().trim();
   const now = Date.now();
+
   if (db) {
-    const stmt = db.prepare('INSERT OR IGNORE INTO mailboxes (address, created_at) VALUES (?, ?)');
-    stmt.run(cleanAddr, now);
+    const existing = db.prepare('SELECT address, discord_user_id, discord_username, created_at, is_preserved, preserved_at FROM mailboxes WHERE address = ?').get(cleanAddr);
+    if (!existing) {
+      const stmt = db.prepare(`
+        INSERT INTO mailboxes (address, discord_user_id, discord_username, created_at, last_accessed_at, is_preserved, preserved_at)
+        VALUES (?, ?, ?, ?, ?, 0, NULL)
+      `);
+      stmt.run(cleanAddr, discordUserId, discordUsername, now, now);
+      return { address: cleanAddr, discord_user_id: discordUserId, discord_username: discordUsername, created_at: now, is_preserved: 0 };
+    } else {
+      // Update access and Discord user if linking
+      if (discordUserId && !existing.discord_user_id) {
+        db.prepare('UPDATE mailboxes SET last_accessed_at = ?, discord_user_id = ?, discord_username = ? WHERE address = ?').run(now, discordUserId, discordUsername, cleanAddr);
+      } else {
+        db.prepare('UPDATE mailboxes SET last_accessed_at = ? WHERE address = ?').run(now, cleanAddr);
+      }
+      return existing;
+    }
   } else {
     if (!memoryStore.mailboxes.has(cleanAddr)) {
-      memoryStore.mailboxes.set(cleanAddr, { address: cleanAddr, created_at: now });
+      const mb = { address: cleanAddr, discord_user_id: discordUserId, discord_username: discordUsername, created_at: now, last_accessed_at: now, is_preserved: 0, preserved_at: null };
+      memoryStore.mailboxes.set(cleanAddr, mb);
+      return mb;
     }
+    const mb = memoryStore.mailboxes.get(cleanAddr);
+    mb.last_accessed_at = now;
+    if (discordUserId && !mb.discord_user_id) {
+      mb.discord_user_id = discordUserId;
+      mb.discord_username = discordUsername;
+    }
+    return mb;
   }
-  return { address: cleanAddr, created_at: now };
+}
+
+export function getMailboxDetails(address) {
+  const cleanAddr = address.toLowerCase().trim();
+  if (db) {
+    return db.prepare('SELECT * FROM mailboxes WHERE address = ?').get(cleanAddr) || null;
+  }
+  return memoryStore.mailboxes.get(cleanAddr) || null;
 }
 
 export function listRecentMailboxes(limit = 15) {
   if (db) {
     const stmt = db.prepare(`
-      SELECT m.address, m.created_at,
+      SELECT m.address, m.created_at, m.last_accessed_at, m.is_preserved, m.discord_username,
              (SELECT COUNT(*) FROM messages msg WHERE msg.inbox_address = m.address) as count,
              (SELECT MAX(received_at) FROM messages msg WHERE msg.inbox_address = m.address) as last_active
       FROM mailboxes m
+      WHERE m.is_preserved = 0
       ORDER BY COALESCE(last_active, m.created_at) DESC
       LIMIT ?
     `);
     return stmt.all(limit);
   }
   return Array.from(memoryStore.mailboxes.values())
+    .filter((m) => !m.is_preserved)
     .map((m) => {
       const count = memoryStore.messages.filter((msg) => msg.inbox_address === m.address).length;
-      return { address: m.address, created_at: m.created_at, count };
+      return { address: m.address, created_at: m.created_at, count, is_preserved: m.is_preserved };
     })
     .slice(0, limit);
 }
 
-// --- Message Operations ---
+export function listUserMailboxes(discordUserId) {
+  if (!discordUserId) return [];
+  if (db) {
+    const stmt = db.prepare(`
+      SELECT m.address, m.created_at, m.last_accessed_at, m.is_preserved,
+             (SELECT COUNT(*) FROM messages msg WHERE msg.inbox_address = m.address) as count
+      FROM mailboxes m
+      WHERE m.discord_user_id = ?
+      ORDER BY m.created_at DESC
+    `);
+    return stmt.all(discordUserId);
+  }
+  return Array.from(memoryStore.mailboxes.values())
+    .filter((m) => m.discord_user_id === discordUserId)
+    .map((m) => ({
+      address: m.address,
+      created_at: m.created_at,
+      count: memoryStore.messages.filter((msg) => msg.inbox_address === m.address).length,
+      is_preserved: m.is_preserved,
+    }));
+}
+
+// --- Message Compression & Preservation Logic ---
+// Conserves space after 24 hours: compresses text/html/mime into gzip/deflate blobs.
+// ZERO messages are ever deleted! When opened, messages are decompressed on-the-fly.
+
+function compressText(str) {
+  if (!str) return '';
+  try {
+    return zlib.deflateSync(Buffer.from(str, 'utf8')).toString('base64');
+  } catch {
+    return str;
+  }
+}
+
+function decompressText(str) {
+  if (!str) return '';
+  try {
+    return zlib.inflateSync(Buffer.from(str, 'base64')).toString('utf8');
+  } catch {
+    return str;
+  }
+}
 
 export function saveMessage(msg) {
   const cleanInbox = msg.inbox_address.toLowerCase().trim();
@@ -116,12 +372,12 @@ export function saveMessage(msg) {
         id, inbox_address, from_address, from_name, to_address,
         subject, snippet, text_body, html_body, raw_mime,
         attachments_json, headers_json, discord_code, discord_url,
-        received_at, is_read
+        received_at, is_read, is_compressed
       ) VALUES (
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
-        ?, ?
+        ?, ?, 0
       )
     `);
 
@@ -137,31 +393,44 @@ export function saveMessage(msg) {
       msg.html_body || '',
       msg.raw_mime || '',
       JSON.stringify(msg.attachments || []),
-      JSON.stringify(msg.headers || {}),
+      JSON.stringify(sanitizeHeaders(msg.headers || {})),
       msg.discord_code || null,
       msg.discord_url || null,
       msg.received_at || Date.now(),
       0
     );
   } else {
-    memoryStore.messages.unshift(msg);
+    memoryStore.messages.unshift({
+      ...msg,
+      headers: sanitizeHeaders(msg.headers || {}),
+      is_compressed: 0,
+    });
   }
 }
 
 export function getMessages(inboxAddress) {
   const cleanInbox = inboxAddress.toLowerCase().trim();
+  const now = Date.now();
+
+  // Mark mailbox as accessed
   if (db) {
+    db.prepare('UPDATE mailboxes SET last_accessed_at = ? WHERE address = ?').run(now, cleanInbox);
+
     const stmt = db.prepare(`
       SELECT id, inbox_address, from_address, from_name, to_address,
-             subject, snippet, discord_code, discord_url, received_at, is_read,
+             subject, snippet, discord_code, discord_url, received_at, is_read, is_compressed,
              LENGTH(attachments_json) > 2 as has_attachments
       FROM messages
       WHERE inbox_address = ?
       ORDER BY received_at DESC
-      LIMIT 100
+      LIMIT 150
     `);
-    return stmt.all(cleanInbox);
+    const rows = stmt.all(cleanInbox);
+    return rows;
   }
+
+  const mb = memoryStore.mailboxes.get(cleanInbox);
+  if (mb) mb.last_accessed_at = now;
   return memoryStore.messages.filter((m) => m.inbox_address === cleanInbox);
 }
 
@@ -174,34 +443,58 @@ export function getMessageById(inboxAddress, msgId) {
     const row = stmt.get(msgId, cleanInbox);
     if (!row) return null;
 
+    let textBody = row.text_body || '';
+    let htmlBody = row.html_body || '';
+    let rawMime = row.raw_mime || '';
+
+    // Decompress if compressed
+    if (row.is_compressed === 1) {
+      textBody = decompressText(textBody);
+      htmlBody = decompressText(htmlBody);
+      rawMime = decompressText(rawMime);
+    }
+
     return {
       ...row,
+      text_body: textBody,
+      html_body: htmlBody,
+      raw_mime: maskIpAddresses(rawMime),
       attachments: JSON.parse(row.attachments_json || '[]'),
-      headers: JSON.parse(row.headers_json || '{}'),
+      headers: sanitizeHeaders(JSON.parse(row.headers_json || '{}')),
     };
   }
 
   const found = memoryStore.messages.find((m) => m.id === msgId && m.inbox_address === cleanInbox);
-  if (found) found.is_read = 1;
-  return found || null;
+  if (found) {
+    found.is_read = 1;
+    let textBody = found.text_body || '';
+    let htmlBody = found.html_body || '';
+    let rawMime = found.raw_mime || '';
+    if (found.is_compressed) {
+      textBody = decompressText(textBody);
+      htmlBody = decompressText(htmlBody);
+      rawMime = decompressText(rawMime);
+    }
+    return {
+      ...found,
+      text_body: textBody,
+      html_body: htmlBody,
+      raw_mime: maskIpAddresses(rawMime),
+      headers: sanitizeHeaders(found.headers || {}),
+    };
+  }
+  return null;
 }
 
 export function getRawMessage(inboxAddress, msgId) {
-  const cleanInbox = inboxAddress.toLowerCase().trim();
-  if (db) {
-    const stmt = db.prepare('SELECT raw_mime FROM messages WHERE id = ? AND inbox_address = ?');
-    const row = stmt.get(msgId, cleanInbox);
-    return row ? row.raw_mime : null;
-  }
-  const found = memoryStore.messages.find((m) => m.id === msgId && m.inbox_address === cleanInbox);
-  return found ? found.raw_mime : null;
+  const msg = getMessageById(inboxAddress, msgId);
+  return msg ? msg.raw_mime : null;
 }
 
 export function deleteMessage(inboxAddress, msgId) {
   const cleanInbox = inboxAddress.toLowerCase().trim();
   if (db) {
-    const stmt = db.prepare('DELETE FROM messages WHERE id = ? AND inbox_address = ?');
-    stmt.run(msgId, cleanInbox);
+    db.prepare('DELETE FROM messages WHERE id = ? AND inbox_address = ?').run(msgId, cleanInbox);
   } else {
     memoryStore.messages = memoryStore.messages.filter((m) => !(m.id === msgId && m.inbox_address === cleanInbox));
   }
@@ -233,6 +526,149 @@ export function getLatestDiscordVerification(inboxAddress) {
   );
 }
 
+// Background Preservation Pass (Runs periodically)
+// Checks mailboxes older than 24 hours. Marks them as preserved and compresses their email bodies to minimize disk space.
+// NEVER deletes any email!
+export function preserveOldInboxes() {
+  const TWENTY_FOUR_HOURS = 24 * 3600 * 1000;
+  const cutoff = Date.now() - TWENTY_FOUR_HOURS;
+
+  if (db) {
+    // 1. Mark mailboxes older than 24 hours as preserved
+    const updateMailboxStmt = db.prepare(`
+      UPDATE mailboxes
+      SET is_preserved = 1, preserved_at = COALESCE(preserved_at, ?)
+      WHERE created_at < ? AND is_preserved = 0
+    `);
+    const mbRes = updateMailboxStmt.run(Date.now(), cutoff);
+
+    // 2. Compress messages in preserved or older inboxes that aren't compressed yet
+    const uncompressed = db.prepare(`
+      SELECT id, text_body, html_body, raw_mime
+      FROM messages
+      WHERE received_at < ? AND is_compressed = 0
+      LIMIT 200
+    `).all(cutoff);
+
+    if (uncompressed.length > 0) {
+      const updateMsg = db.prepare(`
+        UPDATE messages
+        SET text_body = ?, html_body = ?, raw_mime = ?, is_compressed = 1
+        WHERE id = ?
+      `);
+
+      for (const m of uncompressed) {
+        updateMsg.run(
+          compressText(m.text_body),
+          compressText(m.html_body),
+          compressText(m.raw_mime),
+          m.id
+        );
+      }
+      console.log(`❄️ [Preservation Vault] Compressed ${uncompressed.length} emails into cold space-saving storage (0 deleted).`);
+    }
+
+    if (mbRes.changes > 0) {
+      console.log(`❄️ [Preservation Vault] Marked ${mbRes.changes} inboxes (>24h) into preserved state.`);
+    }
+  } else {
+    for (const mb of memoryStore.mailboxes.values()) {
+      if (mb.created_at < cutoff && !mb.is_preserved) {
+        mb.is_preserved = 1;
+        mb.preserved_at = Date.now();
+      }
+    }
+    for (const m of memoryStore.messages) {
+      if (m.received_at < cutoff && !m.is_compressed) {
+        m.text_body = compressText(m.text_body);
+        m.html_body = compressText(m.html_body);
+        m.raw_mime = compressText(m.raw_mime);
+        m.is_compressed = 1;
+      }
+    }
+  }
+}
+
+// --- Discord Sessions & Owner Management ---
+
+export function isOwnerId(discordId) {
+  if (!discordId) return false;
+  return OWNER_IDS.includes(String(discordId).trim());
+}
+
+export function createDiscordSession({ id, username, global_name, avatar }) {
+  const token = `d_sess_${crypto.randomBytes(32).toString('hex')}`;
+  const now = Date.now();
+  const expiresAt = now + 30 * 24 * 3600 * 1000; // 30-day session
+  const isOwner = isOwnerId(id) ? 1 : 0;
+
+  if (db) {
+    db.prepare(`
+      INSERT INTO discord_sessions (token, user_id, username, global_name, avatar, is_owner, created_at, expires_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(token, id, username, global_name || username, avatar || '', isOwner, now, expiresAt);
+  } else {
+    memoryStore.discordSessions.set(token, {
+      token,
+      user_id: id,
+      username,
+      global_name: global_name || username,
+      avatar: avatar || '',
+      is_owner: isOwner,
+      created_at: now,
+      expires_at: expiresAt,
+    });
+  }
+
+  return { token, is_owner: isOwner, expires_at: expiresAt };
+}
+
+export function getDiscordSession(token) {
+  if (!token) return null;
+  const now = Date.now();
+
+  if (db) {
+    const stmt = db.prepare(`
+      SELECT token, user_id, username, global_name, avatar, is_owner, created_at, expires_at
+      FROM discord_sessions
+      WHERE token = ? AND expires_at > ?
+    `);
+    const session = stmt.get(token, now);
+    if (!session) return null;
+    return {
+      ...session,
+      is_owner: isOwnerId(session.user_id) ? 1 : session.is_owner,
+    };
+  }
+
+  const s = memoryStore.discordSessions.get(token);
+  if (s && s.expires_at > now) {
+    return { ...s, is_owner: isOwnerId(s.user_id) ? 1 : s.is_owner };
+  }
+  return null;
+}
+
+export function deleteDiscordSession(token) {
+  if (!token) return;
+  if (db) {
+    db.prepare('DELETE FROM discord_sessions WHERE token = ?').run(token);
+  } else {
+    memoryStore.discordSessions.delete(token);
+  }
+}
+
+// Clean expired discord sessions
+export function cleanExpiredSessions() {
+  const now = Date.now();
+  if (db) {
+    db.prepare('DELETE FROM discord_sessions WHERE expires_at < ?').run(now);
+  } else {
+    for (const [k, v] of memoryStore.discordSessions.entries()) {
+      if (v.expires_at < now) memoryStore.discordSessions.delete(k);
+    }
+  }
+}
+
 // --- API Keys Management ---
 
 function hashKey(rawKey) {
@@ -241,7 +677,7 @@ function hashKey(rawKey) {
 
 export function createApiKey({ name = 'Default Key', permissions = 'full' }) {
   const id = crypto.randomUUID();
-  const rawKey = `ct_live_${crypto.randomBytes(24).toString('hex')}`;
+  const rawKey = `crwn_${crypto.randomBytes(24).toString('hex')}`;
   const key_hash = hashKey(rawKey);
   const prefix = rawKey.substring(0, 15) + '...';
   const now = Date.now();
@@ -302,77 +738,40 @@ export function verifyApiKey(rawKey) {
   return null;
 }
 
-// --- Admin Session Management ---
-
-export function verifyAdminPassword(pwd) {
-  if (!pwd) return false;
-  return pwd === ADMIN_PASSWORD;
-}
-
-export function createAdminSession() {
-  const token = `admin_sess_${crypto.randomBytes(32).toString('hex')}`;
-  const now = Date.now();
-  const expiresAt = now + 7 * 24 * 3600 * 1000; // 7 days session
-
-  if (db) {
-    db.prepare('INSERT INTO admin_sessions (token, created_at, expires_at) VALUES (?, ?, ?)').run(token, now, expiresAt);
-  } else {
-    memoryStore.adminSessions.add(token);
-  }
-  return { token, expires_at: expiresAt };
-}
-
-export function isValidAdminSession(token) {
-  if (!token) return false;
-  if (db) {
-    const stmt = db.prepare('SELECT * FROM admin_sessions WHERE token = ? AND expires_at > ?');
-    const found = stmt.get(token, Date.now());
-    return Boolean(found);
-  }
-  return memoryStore.adminSessions.has(token);
-}
-
-export function invalidateAdminSession(token) {
-  if (db) {
-    db.prepare('DELETE FROM admin_sessions WHERE token = ?').run(token);
-  } else {
-    memoryStore.adminSessions.delete(token);
-  }
-}
-
-// --- System Stats & 10-Day Retention Cleanup ---
+// --- System Metrics (Masks all IPs) ---
 
 export function getSystemStats() {
+  const domains = getDomains();
   if (db) {
     const mailboxesCount = db.prepare('SELECT COUNT(*) as count FROM mailboxes').get()?.count || 0;
+    const preservedCount = db.prepare('SELECT COUNT(*) as count FROM mailboxes WHERE is_preserved = 1').get()?.count || 0;
     const messagesCount = db.prepare('SELECT COUNT(*) as count FROM messages').get()?.count || 0;
+    const compressedMessagesCount = db.prepare('SELECT COUNT(*) as count FROM messages WHERE is_compressed = 1').get()?.count || 0;
     const keysCount = db.prepare('SELECT COUNT(*) as count FROM api_keys').get()?.count || 0;
+
     return {
       mailboxes: mailboxesCount,
+      preserved_mailboxes: preservedCount,
       messages: messagesCount,
+      compressed_messages: compressedMessagesCount,
+      domains_count: domains.length,
+      domains: domains.map((d) => d.domain),
       api_keys: keysCount,
-      retention_days: Math.round(RETENTION_HOURS / 24),
-      retention_hours: RETENTION_HOURS,
+      policy: 'Preserved Infinite Vault (Zero Deletions)',
     };
   }
+
+  const preserved = Array.from(memoryStore.mailboxes.values()).filter((m) => m.is_preserved).length;
+  const compressed = memoryStore.messages.filter((m) => m.is_compressed).length;
+
   return {
     mailboxes: memoryStore.mailboxes.size,
+    preserved_mailboxes: preserved,
     messages: memoryStore.messages.length,
+    compressed_messages: compressed,
+    domains_count: domains.length,
+    domains: domains.map((d) => d.domain),
     api_keys: memoryStore.apiKeys.size,
-    retention_days: Math.round(RETENTION_HOURS / 24),
-    retention_hours: RETENTION_HOURS,
+    policy: 'Preserved Infinite Vault (Zero Deletions)',
   };
-}
-
-// Background cleanup of expired messages (default 10 days / 240 hours)
-export function cleanOldMessages() {
-  const cutoff = Date.now() - RETENTION_HOURS * 3600 * 1000;
-  if (db) {
-    const res = db.prepare('DELETE FROM messages WHERE received_at < ?').run(cutoff);
-    if (res.changes > 0) {
-      console.log(`🧹 Conserved database clean: Purged ${res.changes} messages older than ${RETENTION_HOURS}h.`);
-    }
-    // Clean expired admin sessions
-    db.prepare('DELETE FROM admin_sessions WHERE expires_at < ?').run(Date.now());
-  }
 }

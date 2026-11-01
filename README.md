@@ -1,42 +1,85 @@
-# ⚡ CyberTemp — Minimalist Port 25 Disposable Email Platform
+# 👑 Crown Mail Vault — Private Port 25 Disposable Email & Cold Preservation Platform
 
-> High-speed, self-hosted disposable mail platform built with **Direct Port 25 SMTP**, **Dark Neomorphic UI**, **10-Day SQLite Vault Conservation**, **Admin-only API Key Vault**, and **Interactive API Checker**.
-
----
-
-## ✨ Features
-
-- ⚡ **Direct Port 25 Inbound SMTP:** Sub-second external email delivery (from Gmail, Discord, Twitter, Outlook) directly to your VPS. No Cloudflare worker delays or dropped webhooks.
-- 📋 **Paste & Open Any Inbox:** Paste any existing email or username to instantly open that mailbox and view its messages.
-- 🔒 **10-Day Conservation Vault:** Emails are stored in high-performance embedded SQLite in WAL mode and preserved for **10 days (240 hours)**.
-- 🛡️ **Admin Portal & API Key Vault:** Only authenticated admins (with password `cyberadmin2026`) can generate and revoke programmatic API keys (`ct_live_...`).
-- 🔌 **Interactive API Checker:** Test API keys, fetch inbox messages, test Discord OTP extraction, and copy generated cURL commands right in your browser.
-- 🎮 **Instant Discord OTP Extraction:** Auto-extracts 6-digit verification codes and activation links with a 1-click "Copy Code" button.
-- 🎨 **Minimalist Cyber Neomorphism:** Modern dark UI with extruded tactile plates, soft inset inputs, real-time WebSocket connection, and audio alerts.
+> High-speed, self-hosted disposable mail platform built with **Direct Port 25 SMTP**, **Dark Neomorphism & Claymorphism UI with Custom Icons**, **Zero-Deletion 24h Cold Preservation Vault**, **Discord Authentication System**, **Owner ID Restricted Admin Dashboard**, **Dynamic Multi-Domain Manager**, and **Anti-Leak IP Shielding**.
 
 ---
 
-## 🚀 Quick Setup on VPS
+## ✨ Upgraded Features
 
-```bash
-git clone https://github.com/obsidian-ontop/temp-mail-own.git
-cd temp-mail-own
-bash deploy.sh
+- ⚡ **Direct Port 25 Inbound SMTP:** Sub-second external email delivery (from Gmail, Discord, Twitter/X, Outlook, Steam, etc.) directly to your server.
+- 🎨 **Dark Neomorphism & Claymorphism:** Tactile 3D pillowy clay cards, sunken concave insets, extruded buttons with smooth micro-squish tactile states, and cohesive custom hand-crafted SVG icons.
+- ❄️ **Zero Deletions & 24h Cold Preservation:**
+  - **No emails are ever deleted!** No expiration.
+  - After 24 hours, inboxes transition to a **Preserved (Cold Storage)** state where text, HTML, and raw MIME are compressed using `zlib` to save disk space.
+  - When any user pastes or searches that mailbox, all emails are decompressed and restored immediately with a **"Preserved Cold Vault Active"** badge!
+- 🔒 **Discord Authentication Required to Create Mail:**
+  - Users must authenticate with Discord before generating mailboxes.
+  - Protects server resources from bot abuse while enabling users to view their saved mailboxes.
+  - Anyone can still paste an existing address into the omnibar to check their emails.
+- 🛡️ **Fully Secured Owner ID Admin Dashboard:**
+  - Admin access is restricted to Discord User IDs matching `OWNER_IDS` in `.env`.
+  - **Zero Credential Leaks:** No passwords or secrets are stored in Chrome Web Data (LocalStorage) or exposed in HTML/DOM.
+  - Authenticated via cryptographically signed `HttpOnly, SameSite=Strict` cookies.
+- 🌐 **Dynamic Multi-Domain Support:**
+  - Add, remove, and set default domains directly inside the Admin Dashboard.
+  - Newly added domains are instantly accepted by the Port 25 SMTP engine and available in the frontend selector without server restart!
+- 🛡️ **Anti-Leak & IP Shielding:**
+  - All internal server and relay IP addresses in email headers and logs are masked (`[shielded-relay.vault]`).
+  - No server or client IP is exposed in Chrome web data, API responses, or health checks.
+- 🔤 **Proper Alphabet Mailbox Names (No "Cyber" Prefix):**
+  - Generates sleek, natural phonetic names inspired by `crwnmail`, `vortex`, `phantom`, `zenith`, `kronos`, `apex`, `crown`, etc.
+  - NO ugly `cyber-` prefix added to generated email usernames!
+- 🎮 **Instant Discord OTP Extraction:**
+  - Automatically extracts 6-digit verification codes and activation links with 1-click copy.
+
+---
+
+## ⚙️ Environment Configuration (`.env`)
+
+```ini
+# Initial comma-separated list of inbound domains (manage more in Admin Dashboard)
+DOMAINS=crwnmail.com,mail.crwnmail.com,rizzcord.site
+
+# Web UI & REST API Port
+PORT=3000
+
+# Inbound SMTP Server Port (Port 25)
+SMTP_PORT=25
+
+# Data directory for SQLite persistent storage
+DATA_DIR=./data
+
+# ==============================================================================
+# 🔒 Discord Authentication & Owner Access Control
+# ==============================================================================
+
+# Comma-separated Discord User IDs granted Owner / Admin Panel access
+# (Enable Developer Mode in Discord, right-click profile -> "Copy User ID")
+OWNER_IDS=123456789012345678,987654321098765432
+
+# Discord OAuth2 Application Credentials (https://discord.com/developers/applications)
+# Set redirect URI to: http://your-domain.com/api/auth/discord/callback
+DISCORD_CLIENT_ID=
+DISCORD_CLIENT_SECRET=
+DISCORD_REDIRECT_URI=
+
+# Server cryptographic secret for signing sessions (auto-generated if left blank)
+ADMIN_SECRET=
 ```
 
 ---
 
-## 🌐 Required DNS Records (Cloudflare)
+## 🌐 Required DNS Records (Cloudflare or DNS Provider)
 
-Under your domain (e.g. `rizzcord.site`) in Cloudflare:
+Under your domain (e.g. `crwnmail.com`):
 
 | Type | Name | Content / Target | Proxy Status | Priority |
 | :--- | :--- | :--- | :--- | :--- |
 | **A** | `mail` | `YOUR_VPS_IP` | **DNS Only (Grey Cloud)** ⚠️ | - |
-| **MX** | `@` | `mail.rizzcord.site` | - | `10` |
+| **MX** | `@` | `mail.crwnmail.com` | - | `10` |
 
 > [!WARNING]
-> Ensure the `mail` A Record is **DNS Only (Grey Cloud)**. Cloudflare's orange cloud blocks incoming Port 25 SMTP traffic.
+> The `mail` A Record MUST be **DNS Only (Grey Cloud)**. Cloudflare proxying blocks incoming Port 25 SMTP traffic.
 
 ---
 
@@ -44,63 +87,41 @@ Under your domain (e.g. `rizzcord.site`) in Cloudflare:
 
 ### 1. Inboxes & Messages
 
-- **Get Messages in Inbox:**
+- **Get Messages in Inbox (Decompresses preserved mail on-the-fly):**
   ```bash
-  curl "http://YOUR_VPS_IP/api/messages/cfjf7byh@rizzcord.site"
+  curl "http://YOUR_SERVER/api/messages/crwnmail24@crwnmail.com"
   ```
 
-- **Get Discord Verification Code (Wait up to 30s):**
+- **Get Discord OTP Verification Code (supports ?wait=true):**
   ```bash
-  curl "http://YOUR_VPS_IP/api/discord/cfjf7byh@rizzcord.site?wait=true&timeout=30"
+  curl "http://YOUR_SERVER/api/discord/crwnmail24@crwnmail.com?wait=true&timeout=30"
   ```
 
 - **Download Email as `.eml`:**
   ```bash
-  curl -O "http://YOUR_VPS_IP/api/messages/cfjf7byh@rizzcord.site/<MSG_ID>/download"
+  curl -O "http://YOUR_SERVER/api/messages/crwnmail24@crwnmail.com/<MSG_ID>/download"
   ```
 
-- **Register / Create Mailbox:**
+### 2. Admin & Domain Management (Owner Restricted)
+
+- **List All Domains:**
   ```bash
-  curl -X POST "http://YOUR_VPS_IP/api/inbox/create" \
-    -H "Content-Type: application/json" \
-    -d '{"address": "myinbox@rizzcord.site"}'
+  curl "http://YOUR_SERVER/api/admin/domains"
   ```
 
-### 2. Admin & API Keys
-
-- **Admin Login:**
+- **Add New Inbound Domain:**
   ```bash
-  curl -X POST "http://YOUR_VPS_IP/api/admin/login" \
+  curl -X POST "http://YOUR_SERVER/api/admin/domains" \
     -H "Content-Type: application/json" \
-    -d '{"password": "cyberadmin2026"}'
+    -d '{"domain": "anotherdomain.com", "isDefault": false}'
   ```
 
-- **Generate API Key (Admin Only):**
+- **Delete Domain:**
   ```bash
-  curl -X POST "http://YOUR_VPS_IP/api/admin/keys" \
-    -H "Authorization: Bearer <ADMIN_TOKEN>" \
-    -H "Content-Type: application/json" \
-    -d '{"name": "Discord Bot Runner", "permissions": "full"}'
+  curl -X DELETE "http://YOUR_SERVER/api/admin/domains/anotherdomain.com"
   ```
 
-- **Verify API Key (API Checker):**
+- **Trigger Immediate Cold Preservation Pass:**
   ```bash
-  curl -X POST "http://YOUR_VPS_IP/api/admin/check-key" \
-    -H "Content-Type: application/json" \
-    -d '{"apiKey": "ct_live_..."}'
+  curl -X POST "http://YOUR_SERVER/api/admin/preserve-now"
   ```
-
----
-
-## 🛠️ Management Commands
-
-```bash
-# View live email stream
-docker compose logs -f
-
-# Restart container
-docker compose restart
-
-# Stop service
-docker compose down
-```

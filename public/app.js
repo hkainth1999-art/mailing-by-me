@@ -1,5 +1,5 @@
 // ==============================================================================
-// CYBER TEMP MAIL — CLIENT CONTROLLER & REAL-TIME ENGINE
+// 👑 CROWN MAIL VAULT — CLIENT CONTROLLER & CLAYMORPHIC ENGINE
 // ==============================================================================
 
 // Application State
@@ -8,15 +8,15 @@ let currentDomain = '';
 let availableDomains = [];
 let messages = [];
 let selectedMessage = null;
-let soundEnabled = localStorage.getItem('cyber_sound') !== 'false';
-let adminToken = localStorage.getItem('cyber_admin_token') || null;
+let soundEnabled = localStorage.getItem('crown_sound') !== 'false';
+let currentUser = null; // { loggedIn: false, user: null }
 let ws = null;
 let wsHeartbeat = null;
-let recentMailboxes = JSON.parse(localStorage.getItem('cyber_recent_mailboxes') || '[]');
+let recentMailboxes = JSON.parse(localStorage.getItem('crown_recent_mailboxes') || '[]');
 
-// Audio Synthesizer Chime (Web Audio API)
+// Web Audio API Synthesizer (Chime)
 let audioCtx = null;
-function playCyberChime() {
+function playVaultChime() {
   if (!soundEnabled) return;
   try {
     if (!audioCtx) {
@@ -27,29 +27,27 @@ function playCyberChime() {
     }
     const now = audioCtx.currentTime;
 
-    // Tone 1 (High tone)
     const osc1 = audioCtx.createOscillator();
     const gain1 = audioCtx.createGain();
     osc1.type = 'sine';
-    osc1.frequency.setValueAtTime(880, now);
-    osc1.frequency.exponentialRampToValueAtTime(1320, now + 0.12);
+    osc1.frequency.setValueAtTime(784, now); // G5
+    osc1.frequency.exponentialRampToValueAtTime(1046.5, now + 0.14); // C6
     gain1.gain.setValueAtTime(0.2, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.25);
+    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
     osc1.connect(gain1);
     gain1.connect(audioCtx.destination);
     osc1.start(now);
-    osc1.stop(now + 0.25);
+    osc1.stop(now + 0.3);
 
-    // Tone 2 (Harmonic finish)
     const osc2 = audioCtx.createOscillator();
     const gain2 = audioCtx.createGain();
     osc2.type = 'triangle';
-    osc2.frequency.setValueAtTime(1760, now + 0.12);
-    gain2.gain.setValueAtTime(0.15, now + 0.12);
+    osc2.frequency.setValueAtTime(1318.5, now + 0.14); // E6
+    gain2.gain.setValueAtTime(0.18, now + 0.14);
     gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
     osc2.connect(gain2);
     gain2.connect(audioCtx.destination);
-    osc2.start(now + 0.12);
+    osc2.start(now + 0.14);
     osc2.stop(now + 0.45);
   } catch (e) {
     console.warn('Audio chime error:', e);
@@ -57,6 +55,16 @@ function playCyberChime() {
 }
 
 // DOM Elements
+const authRequiredBanner = document.getElementById('authRequiredBanner');
+const bannerLoginBtn = document.getElementById('bannerLoginBtn');
+const discordLoginBtn = document.getElementById('discordLoginBtn');
+const discordUserPill = document.getElementById('discordUserPill');
+const userAvatarImg = document.getElementById('userAvatarImg');
+const userUsernameText = document.getElementById('userUsernameText');
+const userRoleBadge = document.getElementById('userRoleBadge');
+const discordLogoutBtn = document.getElementById('discordLogoutBtn');
+const openAdminBtn = document.getElementById('openAdminBtn');
+
 const pasteInboxForm = document.getElementById('pasteInboxForm');
 const pasteInboxInput = document.getElementById('pasteInboxInput');
 const randomMailBtn = document.getElementById('randomMailBtn');
@@ -67,9 +75,18 @@ const customUsernameInput = document.getElementById('customUsernameInput');
 const customDomainSelect = document.getElementById('customDomainSelect');
 const recentMailboxesList = document.getElementById('recentMailboxesList');
 
+const userInboxesTabContainer = document.getElementById('userInboxesTabContainer');
+const toggleUserInboxesBtn = document.getElementById('toggleUserInboxesBtn');
+const userInboxesCountBadge = document.getElementById('userInboxesCountBadge');
+const userInboxesDrawer = document.getElementById('userInboxesDrawer');
+const userInboxesList = document.getElementById('userInboxesList');
+
+const preservedStateBanner = document.getElementById('preservedStateBanner');
 const activeAddressDisplay = document.getElementById('activeAddressDisplay');
 const copyActiveAddressBtn = document.getElementById('copyActiveAddressBtn');
 const copyBtnText = document.getElementById('copyBtnText');
+const activePreserveBadge = document.getElementById('activePreserveBadge');
+const activePreserveText = document.getElementById('activePreserveText');
 const mainDomainSelect = document.getElementById('mainDomainSelect');
 const refreshInboxBtn = document.getElementById('refreshInboxBtn');
 const clearCurrentInboxBtn = document.getElementById('clearCurrentInboxBtn');
@@ -111,14 +128,28 @@ const paneRaw = document.getElementById('paneRaw');
 const viewTabs = document.querySelectorAll('.view-tab');
 
 // Modals
-const openAdminBtn = document.getElementById('openAdminBtn');
+const discordAuthModal = document.getElementById('discordAuthModal');
+const closeDiscordAuthModalBtn = document.getElementById('closeDiscordAuthModalBtn');
+const discordOAuthBtnLink = document.getElementById('discordOAuthBtnLink');
+const devLoginForm = document.getElementById('devLoginForm');
+const devDiscordIdInput = document.getElementById('devDiscordIdInput');
+const devUsernameInput = document.getElementById('devUsernameInput');
+
 const adminModal = document.getElementById('adminModal');
 const closeAdminModalBtn = document.getElementById('closeAdminModalBtn');
-const adminLoginFormContainer = document.getElementById('adminLoginFormContainer');
-const adminKeyVaultContainer = document.getElementById('adminKeyVaultContainer');
-const adminLoginForm = document.getElementById('adminLoginForm');
-const adminPasswordInput = document.getElementById('adminPasswordInput');
-const adminLoginError = document.getElementById('adminLoginError');
+const adminTabs = document.querySelectorAll('.admin-tab');
+const addDomainForm = document.getElementById('addDomainForm');
+const newDomainInput = document.getElementById('newDomainInput');
+const newDomainDefaultCheck = document.getElementById('newDomainDefaultCheck');
+const activeDomainsList = document.getElementById('activeDomainsList');
+
+const statMailboxes = document.getElementById('statMailboxes');
+const statPreserved = document.getElementById('statPreserved');
+const statMessages = document.getElementById('statMessages');
+const statCompressed = document.getElementById('statCompressed');
+const triggerPreserveBtn = document.getElementById('triggerPreserveBtn');
+const preserveStatusAlert = document.getElementById('preserveStatusAlert');
+
 const createApiKeyForm = document.getElementById('createApiKeyForm');
 const newKeyNameInput = document.getElementById('newKeyNameInput');
 const newKeyPermSelect = document.getElementById('newKeyPermSelect');
@@ -126,7 +157,6 @@ const newKeyAlert = document.getElementById('newKeyAlert');
 const newKeyValueDisplay = document.getElementById('newKeyValueDisplay');
 const copyNewKeyBtn = document.getElementById('copyNewKeyBtn');
 const activeKeysList = document.getElementById('activeKeysList');
-const adminLogoutBtn = document.getElementById('adminLogoutBtn');
 
 const openApiTesterBtn = document.getElementById('openApiTesterBtn');
 const apiTesterModal = document.getElementById('apiTesterModal');
@@ -145,50 +175,220 @@ const closeQrModalBtn = document.getElementById('closeQrModalBtn');
 const qrCanvas = document.getElementById('qrCanvas');
 const qrAddressText = document.getElementById('qrAddressText');
 
-// Helper: Random string
-function randomLocalPart(len = 8) {
-  const chars = 'abcdefghjkmnpqrstuvwxyz23456789';
-  let res = '';
-  for (let i = 0; i < len; i++) {
-    res += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return res;
+// ==============================================================================
+// 1. PROPER ALPHABET NAME GENERATOR (No 'cyber' prefix, clean natural words)
+// ==============================================================================
+
+const PROPER_NAME_PREFIXES = [
+  'crwnmail', 'crown', 'vortex', 'phantom', 'zenith', 'kronos', 'apex', 'pulse',
+  'shadow', 'frost', 'astral', 'valkyrie', 'specter', 'storm', 'nexus', 'titan',
+  'velocity', 'aurora', 'phoenix', 'solaris', 'echo', 'blade', 'flux', 'radiant',
+  'noble', 'vector', 'prime', 'shield', 'falcon', 'drift', 'haven', 'cipher',
+  'krypton', 'hyper', 'alpha', 'omega', 'swift', 'nova', 'strider', 'temp'
+];
+
+const PROPER_NAME_SUFFIXES = [
+  '24', '77', '88', '99', '42', '12', '7', '33', '55', '01', 'pro', 'hub', 'mail', 'box', 'lab', 'net'
+];
+
+function generateProperAlphabetMailbox() {
+  const prefix = PROPER_NAME_PREFIXES[Math.floor(Math.random() * PROPER_NAME_PREFIXES.length)];
+  const suffix = PROPER_NAME_SUFFIXES[Math.floor(Math.random() * PROPER_NAME_SUFFIXES.length)];
+  return `${prefix}${suffix}`;
 }
 
-// 1. Initialize Domains & Mailbox
+// ==============================================================================
+// 2. BOOT & AUTHENTICATION MANAGEMENT
+// ==============================================================================
+
 async function initApp() {
   updateSoundUI();
 
-  try {
-    const res = await fetch('/api/domains');
-    const data = await res.json();
-    availableDomains = data.domains || ['rizzcord.site'];
-  } catch (err) {
-    availableDomains = ['rizzcord.site'];
-  }
+  // Load Domains from Server (Managed dynamically in Admin Panel)
+  await loadDomains();
 
-  currentDomain = availableDomains[0] || 'rizzcord.site';
-
-  // Populate Domain selects
-  const domainOptions = availableDomains
-    .map((d) => `<option value="${d}">${d}</option>`)
-    .join('');
-  mainDomainSelect.innerHTML = domainOptions;
-  customDomainSelect.innerHTML = domainOptions;
+  // Check Discord Authentication
+  await checkDiscordAuth();
 
   // Check initial address from URL hash
   const hash = window.location.hash.replace('#', '').trim();
   if (hash && hash.includes('@')) {
     setAddress(hash);
   } else {
-    // Generate sleek initial address
-    setAddress(`cyber-${randomLocalPart(6)}@${currentDomain}`);
+    // Generate sleek initial address with proper alphabet (NO 'cyber')
+    const initialName = generateProperAlphabetMailbox();
+    setAddress(`${initialName}@${currentDomain}`);
   }
 
   renderRecentMailboxes();
 }
 
-// Update Active Address
+async function loadDomains() {
+  try {
+    const res = await fetch('/api/domains');
+    const data = await res.json();
+    availableDomains = data.domains || ['crwnmail.com'];
+    currentDomain = data.default || availableDomains[0] || 'crwnmail.com';
+  } catch (err) {
+    availableDomains = ['crwnmail.com', 'rizzcord.site'];
+    currentDomain = 'crwnmail.com';
+  }
+
+  updateDomainSelects();
+}
+
+function updateDomainSelects() {
+  const optionsHtml = availableDomains
+    .map((d) => `<option value="${d}" ${d === currentDomain ? 'selected' : ''}>${d}</option>`)
+    .join('');
+
+  mainDomainSelect.innerHTML = optionsHtml;
+  customDomainSelect.innerHTML = optionsHtml;
+}
+
+// Discord Auth Checker (Uses secure HttpOnly cookie session)
+async function checkDiscordAuth() {
+  try {
+    const res = await fetch('/api/auth/me');
+    const data = await res.json();
+
+    currentUser = data;
+
+    if (data.loggedIn && data.user) {
+      // User is logged in
+      authRequiredBanner.classList.add('hidden');
+      discordLoginBtn.classList.add('hidden');
+      discordUserPill.classList.remove('hidden');
+
+      userUsernameText.textContent = data.user.globalName || data.user.username;
+      if (data.user.avatar) {
+        userAvatarImg.src = data.user.avatar;
+      } else {
+        userAvatarImg.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(data.user.username)}&background=5865F2&color=fff`;
+      }
+
+      // Check if user is OWNER
+      if (data.user.isOwner) {
+        userRoleBadge.classList.remove('hidden');
+        openAdminBtn.classList.remove('hidden');
+      } else {
+        userRoleBadge.classList.add('hidden');
+        openAdminBtn.classList.add('hidden');
+      }
+
+      // Show user created inboxes tab
+      userInboxesTabContainer.classList.remove('hidden');
+      loadUserInboxes();
+    } else {
+      // User is NOT logged in
+      authRequiredBanner.classList.remove('hidden');
+      discordLoginBtn.classList.remove('hidden');
+      discordUserPill.classList.add('hidden');
+      openAdminBtn.classList.add('hidden');
+      userInboxesTabContainer.classList.add('hidden');
+
+      // Setup Discord OAuth link if configured
+      if (data.discordOAuthConfigured) {
+        fetch('/api/auth/discord')
+          .then((r) => r.json())
+          .then((authData) => {
+            if (authData.configured && authData.url) {
+              discordOAuthBtnLink.href = authData.url;
+            }
+          })
+          .catch(() => {});
+      }
+    }
+  } catch (err) {
+    console.error('Failed to check auth state:', err);
+  }
+}
+
+// User Created Inboxes
+async function loadUserInboxes() {
+  try {
+    const res = await fetch('/api/user/inboxes');
+    const data = await res.json();
+    const mailboxes = data.mailboxes || [];
+    userInboxesCountBadge.textContent = mailboxes.length;
+
+    if (mailboxes.length === 0) {
+      userInboxesList.innerHTML = '<span class="text-xs text-gray-500 font-mono">No mailboxes created under your Discord account yet.</span>';
+      return;
+    }
+
+    userInboxesList.innerHTML = mailboxes
+      .map(
+        (m) => `
+        <button class="user-inbox-chip clay-pill px-2.5 py-1 text-xs font-mono text-cyan-300 hover:text-white flex items-center gap-1.5" data-addr="${m.address}">
+          <span>📬</span>
+          <span>${m.address}</span>
+          ${m.is_preserved ? '<span class="text-[9px] text-cyan-400 font-bold">❄️</span>' : ''}
+          <span class="text-[10px] text-gray-400">(${m.count})</span>
+        </button>
+      `
+      )
+      .join('');
+
+    document.querySelectorAll('.user-inbox-chip').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        setAddress(btn.getAttribute('data-addr'));
+      });
+    });
+  } catch (err) {}
+}
+
+toggleUserInboxesBtn.addEventListener('click', () => {
+  userInboxesDrawer.classList.toggle('hidden');
+});
+
+// Logout
+discordLogoutBtn.addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.reload();
+});
+
+// Prompt Discord Auth Modal
+function promptDiscordLogin() {
+  discordAuthModal.classList.remove('hidden');
+}
+
+discordLoginBtn.addEventListener('click', promptDiscordLogin);
+bannerLoginBtn.addEventListener('click', promptDiscordLogin);
+
+closeDiscordAuthModalBtn.addEventListener('click', () => {
+  discordAuthModal.classList.add('hidden');
+});
+
+// Dev Direct Discord Login
+devLoginForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const discordId = devDiscordIdInput.value.trim();
+  const username = devUsernameInput.value.trim();
+  if (!discordId) return;
+
+  try {
+    const res = await fetch('/api/auth/dev-login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ discordId, username }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      discordAuthModal.classList.add('hidden');
+      await checkDiscordAuth();
+    } else {
+      alert(data.error || 'Login failed');
+    }
+  } catch (err) {
+    alert('Failed to connect to server');
+  }
+});
+
+// ==============================================================================
+// 3. MAILBOX NAVIGATION & 24H PRESERVATION STATE
+// ==============================================================================
+
 function setAddress(addr) {
   const clean = addr.toLowerCase().trim();
   if (!clean) return;
@@ -205,37 +405,28 @@ function setAddress(addr) {
     currentDomain = parts[1];
   }
 
-  // Save to recent inboxes
   saveRecentMailbox(currentAddress);
-
-  // Register in SQLite vault (persisted for 10 days)
-  fetch('/api/inbox/create', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ address: currentAddress }),
-  }).catch(() => {});
 
   // Reset viewer
   selectedMessage = null;
   noMessageSelected.classList.remove('hidden');
   activeMessageViewer.classList.add('hidden');
 
-  // Load 10-day conserved messages
+  // Load messages and evaluate preservation state
   loadMessages();
   checkDiscordVerification();
 
-  // Connect WebSocket to live stream
+  // Connect live WebSocket stream
   connectWebSocket();
 }
 
-// Save recent mailbox to history
 function saveRecentMailbox(addr) {
   recentMailboxes = recentMailboxes.filter((a) => a !== addr);
   recentMailboxes.unshift(addr);
   if (recentMailboxes.length > 8) {
     recentMailboxes = recentMailboxes.slice(0, 8);
   }
-  localStorage.setItem('cyber_recent_mailboxes', JSON.stringify(recentMailboxes));
+  localStorage.setItem('crown_recent_mailboxes', JSON.stringify(recentMailboxes));
   renderRecentMailboxes();
 }
 
@@ -247,7 +438,7 @@ function renderRecentMailboxes() {
   recentMailboxesList.innerHTML = recentMailboxes
     .map(
       (addr) => `
-      <button class="recent-mailbox-chip neo-pill px-2.5 py-1 rounded-lg text-[11px] font-mono text-gray-300 hover:text-cyan-300 hover:border-cyan-500/30 transition flex items-center gap-1 ${
+      <button class="recent-mailbox-chip clay-pill px-2.5 py-1 text-[11px] font-mono text-gray-300 hover:text-cyan-300 transition flex items-center gap-1 ${
         addr === currentAddress ? 'border-cyan-500/40 text-cyan-300' : ''
       }" data-addr="${addr}">
         <span>📬</span>
@@ -264,7 +455,7 @@ function renderRecentMailboxes() {
   });
 }
 
-// 2. Load Messages from 10-Day SQLite Vault
+// Load Messages & Check Preserved State
 async function loadMessages() {
   if (!currentAddress) return;
 
@@ -272,6 +463,16 @@ async function loadMessages() {
     const res = await fetch(`/api/messages/${encodeURIComponent(currentAddress)}`);
     const data = await res.json();
     messages = data.messages || [];
+
+    // Check if inbox is in Preserved Cold Storage state (> 24 hours)
+    if (data.is_preserved) {
+      preservedStateBanner.classList.remove('hidden');
+      activePreserveText.textContent = 'Preserved Cold Vault Active (0 Deletions)';
+    } else {
+      preservedStateBanner.classList.add('hidden');
+      activePreserveText.textContent = 'Active SQLite Vault';
+    }
+
     renderFeed();
   } catch (err) {
     console.error('Failed to load messages:', err);
@@ -308,10 +509,11 @@ function renderFeed() {
       });
       const hasAttachments = Boolean(msg.has_attachments);
       const isDiscord = Boolean(msg.discord_code || msg.discord_url);
+      const isCompressed = Boolean(msg.is_compressed);
 
       return `
-        <div class="message-card p-3 rounded-xl cursor-pointer transition neo-plate-hover ${
-          isSelected ? 'neo-inset border-cyan-500/40' : 'bg-transparent'
+        <div class="message-card p-3 rounded-2xl cursor-pointer clay-card-hover ${
+          isSelected ? 'clay-inset border-cyan-500/40' : 'clay-card'
         }" data-id="${msg.id}">
           <div class="flex items-center justify-between text-[11px] font-mono text-gray-400 mb-1">
             <span class="font-bold text-gray-200 truncate max-w-[180px]">${escapeHtml(msg.from_name || msg.from_address || 'Anonymous')}</span>
@@ -327,6 +529,11 @@ function renderFeed() {
             ${
               isDiscord
                 ? `<span class="text-[9px] font-mono px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-bold border border-purple-500/30">OTP: ${msg.discord_code || 'Link'}</span>`
+                : ''
+            }
+            ${
+              isCompressed
+                ? `<span class="text-[9px] font-mono px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-500/30">❄️ Preserved</span>`
                 : ''
             }
             ${
@@ -348,7 +555,7 @@ function renderFeed() {
   });
 }
 
-// 3. View Full Message Details
+// View Full Message
 async function viewMessage(id) {
   try {
     const res = await fetch(`/api/messages/${encodeURIComponent(currentAddress)}/${id}`);
@@ -356,7 +563,7 @@ async function viewMessage(id) {
     if (!data.message) return;
 
     selectedMessage = data.message;
-    renderFeed(); // Update selection highlight
+    renderFeed();
 
     noMessageSelected.classList.add('hidden');
     activeMessageViewer.classList.remove('hidden');
@@ -375,7 +582,7 @@ async function viewMessage(id) {
       attachmentsList.innerHTML = selectedMessage.attachments
         .map(
           (att) => `
-        <span class="neo-inset px-2.5 py-1 rounded-lg text-xs font-mono text-cyan-300 flex items-center gap-1.5">
+        <span class="clay-inset px-2.5 py-1 rounded-lg text-xs font-mono text-cyan-300 flex items-center gap-1.5">
           <span>📎</span>
           <span>${escapeHtml(att.filename || 'attachment')}</span>
           <span class="text-[10px] text-gray-500">(${Math.round((att.size || 0) / 1024)} KB)</span>
@@ -387,8 +594,7 @@ async function viewMessage(id) {
       attachmentsBar.classList.add('hidden');
     }
 
-    // Populate Tab Contents
-    const htmlContent = selectedMessage.html_body || `<pre style="font-family: monospace; white-space: pre-wrap;">${escapeHtml(selectedMessage.text_body || 'No text content')}</pre>`;
+    const htmlContent = selectedMessage.html_body || `<pre style="font-family: monospace; white-space: pre-wrap; padding: 16px;">${escapeHtml(selectedMessage.text_body || 'No text content')}</pre>`;
     htmlIframe.srcdoc = htmlContent;
 
     paneText.textContent = selectedMessage.text_body || '(No text content)';
@@ -406,9 +612,9 @@ function switchTab(tabName) {
   viewTabs.forEach((tab) => {
     const isTarget = tab.getAttribute('data-tab') === tabName;
     if (isTarget) {
-      tab.className = 'view-tab neo-pill px-3 py-1 rounded-lg text-xs font-mono text-cyan-400 font-bold border-cyan-500/40';
+      tab.className = 'view-tab clay-pill px-3 py-1 text-xs font-mono text-cyan-400 font-bold border-cyan-500/40';
     } else {
-      tab.className = 'view-tab neo-btn px-3 py-1 rounded-lg text-xs font-mono text-gray-400 hover:text-white';
+      tab.className = 'view-tab clay-btn px-3 py-1 text-xs font-mono text-gray-400 hover:text-white';
     }
   });
 
@@ -429,7 +635,7 @@ viewTabs.forEach((tab) => {
   });
 });
 
-// 4. Discord Verification Extractor
+// Check Discord Verification Code
 async function checkDiscordVerification() {
   if (!currentAddress) return;
   try {
@@ -461,7 +667,7 @@ async function checkDiscordVerification() {
   }
 }
 
-// 5. Real-Time WebSocket Connection
+// WebSocket Connection
 function connectWebSocket() {
   if (ws) {
     try {
@@ -477,8 +683,8 @@ function connectWebSocket() {
     ws = new WebSocket(wsUrl);
 
     ws.onopen = () => {
-      wsStatusBadge.className = 'neo-pill flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-[11px] font-mono text-emerald-400 border border-emerald-500/20';
-      wsStatusText.textContent = 'MESH LIVE';
+      wsStatusBadge.className = 'clay-pill flex items-center space-x-1.5 px-3 py-1.5 text-[11px] font-mono text-emerald-400 border border-emerald-500/20';
+      wsStatusText.textContent = 'VAULT LIVE';
 
       wsHeartbeat = setInterval(() => {
         if (ws.readyState === WebSocket.OPEN) {
@@ -490,8 +696,8 @@ function connectWebSocket() {
     ws.onmessage = (event) => {
       try {
         const payload = JSON.parse(event.data);
-        if (payload.type === 'new_email') {
-          playCyberChime();
+        if (payload.type === 'new_message') {
+          playVaultChime();
           loadMessages();
           checkDiscordVerification();
         }
@@ -499,7 +705,7 @@ function connectWebSocket() {
     };
 
     ws.onclose = () => {
-      wsStatusBadge.className = 'neo-pill flex items-center space-x-1.5 px-3 py-1.5 rounded-xl text-[11px] font-mono text-yellow-400 border border-yellow-500/20';
+      wsStatusBadge.className = 'clay-pill flex items-center space-x-1.5 px-3 py-1.5 text-[11px] font-mono text-yellow-400 border border-yellow-500/20';
       wsStatusText.textContent = 'RECONNECTING';
       setTimeout(connectWebSocket, 4000);
     };
@@ -512,9 +718,11 @@ function connectWebSocket() {
   }
 }
 
-// 6. Action Handlers
+// ==============================================================================
+// 4. ACTION HANDLERS: CREATING, RESTORING, RANDOMIZING
+// ==============================================================================
 
-// Paste & Open Form
+// Paste & Open Form (Can open any existing or preserved inbox directly!)
 pasteInboxForm.addEventListener('submit', (e) => {
   e.preventDefault();
   let inputVal = pasteInboxInput.value.trim();
@@ -526,33 +734,82 @@ pasteInboxForm.addEventListener('submit', (e) => {
   setAddress(inputVal);
 });
 
-// Random Mail Button
-randomMailBtn.addEventListener('click', () => {
-  const prefix = `cyber-${randomLocalPart(6)}`;
-  setAddress(`${prefix}@${currentDomain}`);
+// Random Mail Button (Requires Discord Login! Proper Alphabet, No 'cyber')
+randomMailBtn.addEventListener('click', async () => {
+  if (!currentUser || !currentUser.loggedIn) {
+    promptDiscordLogin();
+    return;
+  }
+
+  const properName = generateProperAlphabetMailbox();
+  const fullAddress = `${properName}@${currentDomain}`;
+
+  try {
+    const res = await fetch('/api/inbox/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: fullAddress }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setAddress(fullAddress);
+      loadUserInboxes();
+    } else {
+      alert(data.error || 'Failed to create mailbox');
+    }
+  } catch (err) {
+    setAddress(fullAddress);
+  }
 });
 
-// Custom Drawer Toggle & Creation
+// Custom Drawer Toggle
 openCreateCustomBtn.addEventListener('click', () => {
+  if (!currentUser || !currentUser.loggedIn) {
+    promptDiscordLogin();
+    return;
+  }
   customCreateDrawer.classList.toggle('hidden');
 });
 
-customCreateForm.addEventListener('submit', (e) => {
+// Custom Mailbox Creation
+customCreateForm.addEventListener('submit', async (e) => {
   e.preventDefault();
+  if (!currentUser || !currentUser.loggedIn) {
+    promptDiscordLogin();
+    return;
+  }
+
   const username = customUsernameInput.value.trim().toLowerCase();
   const domain = customDomainSelect.value;
   if (!username) return;
 
-  setAddress(`${username}@${domain}`);
-  customUsernameInput.value = '';
-  customCreateDrawer.classList.add('hidden');
+  const fullAddress = `${username}@${domain}`;
+
+  try {
+    const res = await fetch('/api/inbox/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address: fullAddress }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setAddress(fullAddress);
+      customUsernameInput.value = '';
+      customCreateDrawer.classList.add('hidden');
+      loadUserInboxes();
+    } else {
+      alert(data.error || 'Failed to create mailbox');
+    }
+  } catch {
+    setAddress(fullAddress);
+  }
 });
 
 // Domain Selector Change
 mainDomainSelect.addEventListener('change', (e) => {
   currentDomain = e.target.value;
   const parts = currentAddress.split('@');
-  const user = parts[0] || `cyber-${randomLocalPart(6)}`;
+  const user = parts[0] || generateProperAlphabetMailbox();
   setAddress(`${user}@${currentDomain}`);
 });
 
@@ -579,7 +836,7 @@ copyDiscordCodeBtn.addEventListener('click', () => {
   }
 });
 
-// Delete Message
+// Delete Single Message
 deleteMessageBtn.addEventListener('click', async () => {
   if (!selectedMessage) return;
   if (!confirm('Permanently delete this email from the vault?')) return;
@@ -597,7 +854,7 @@ deleteMessageBtn.addEventListener('click', async () => {
   }
 });
 
-// Clear Mailbox
+// Clear Inbox
 clearCurrentInboxBtn.addEventListener('click', async () => {
   if (!confirm(`Purge all emails in ${currentAddress}?`)) return;
   try {
@@ -625,20 +882,18 @@ feedSearchInput.addEventListener('input', () => {
   renderFeed();
 });
 
-// Sound Toggle
+// Audio Toggle
 soundToggleBtn.addEventListener('click', () => {
   soundEnabled = !soundEnabled;
-  localStorage.setItem('cyber_sound', soundEnabled);
+  localStorage.setItem('crown_sound', soundEnabled);
   updateSoundUI();
-  if (soundEnabled) playCyberChime();
+  if (soundEnabled) playVaultChime();
 });
 
 function updateSoundUI() {
   if (soundEnabled) {
-    soundIcon.textContent = '🔔';
     soundText.textContent = 'Sound ON';
   } else {
-    soundIcon.textContent = '🔕';
     soundText.textContent = 'Muted';
   }
 }
@@ -647,7 +902,7 @@ function updateSoundUI() {
 openQrBtn.addEventListener('click', () => {
   qrAddressText.textContent = currentAddress;
   if (window.QRCode) {
-    QRCode.toCanvas(qrCanvas, currentAddress, { width: 200, margin: 1 }, (err) => {
+    QRCode.toCanvas(qrCanvas, currentAddress, { width: 220, margin: 1 }, (err) => {
       if (err) console.error(err);
     });
   }
@@ -659,98 +914,171 @@ closeQrModalBtn.addEventListener('click', () => {
 });
 
 // ==============================================================================
-// 7. ADMIN PORTAL & API KEY VAULT (Admin Login Only)
+// 5. ADMIN CONTROL VAULT (OWNER ACCESS, MULTI-DOMAIN, COLD STATS)
 // ==============================================================================
 
 openAdminBtn.addEventListener('click', () => {
   adminModal.classList.remove('hidden');
-  checkAdminSession();
+  loadAdminDomains();
+  loadAdminStats();
+  loadAdminKeys();
 });
 
 closeAdminModalBtn.addEventListener('click', () => {
   adminModal.classList.add('hidden');
 });
 
-async function checkAdminSession() {
-  if (!adminToken) {
-    showAdminLogin();
-    return;
-  }
-
-  try {
-    const res = await fetch('/api/admin/verify', {
-      headers: { Authorization: `Bearer ${adminToken}` },
+// Admin Tab Navigation
+adminTabs.forEach((tab) => {
+  tab.addEventListener('click', () => {
+    const target = tab.getAttribute('data-tab');
+    adminTabs.forEach((t) => {
+      t.className = 'admin-tab clay-btn px-3.5 py-1.5 text-gray-400 hover:text-white';
     });
-    const data = await res.json();
-    if (data.valid) {
-      showAdminVault();
-    } else {
-      adminToken = null;
-      localStorage.removeItem('cyber_admin_token');
-      showAdminLogin();
+    tab.className = 'admin-tab clay-pill px-3.5 py-1.5 text-amber-300 border-amber-500/40 font-bold';
+
+    document.querySelectorAll('.admin-pane').forEach((p) => p.classList.add('hidden'));
+
+    if (target === 'domains') document.getElementById('adminTabDomains').classList.remove('hidden');
+    if (target === 'stats') document.getElementById('adminTabStats').classList.remove('hidden');
+    if (target === 'keys') document.getElementById('adminTabKeys').classList.remove('hidden');
+    if (target === 'security') document.getElementById('adminTabSecurity').classList.remove('hidden');
+  });
+});
+
+// Multi-Domain Operations (Admin)
+async function loadAdminDomains() {
+  try {
+    const res = await fetch('/api/admin/domains');
+    if (res.status === 403) {
+      alert('Access denied. Owner authorization required.');
+      adminModal.classList.add('hidden');
+      return;
     }
-  } catch {
-    showAdminLogin();
+    const data = await res.json();
+    const domains = data.domains || [];
+
+    if (domains.length === 0) {
+      activeDomainsList.innerHTML = '<div class="text-xs font-mono text-gray-500">No domains configured.</div>';
+      return;
+    }
+
+    activeDomainsList.innerHTML = domains
+      .map(
+        (d) => `
+      <div class="clay-inset p-3.5 rounded-xl flex items-center justify-between text-xs font-mono">
+        <div class="flex items-center gap-3">
+          <span class="text-white font-bold text-sm">${escapeHtml(d.domain)}</span>
+          ${
+            d.is_default
+              ? '<span class="text-[9px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">DEFAULT</span>'
+              : ''
+          }
+        </div>
+        <div class="flex items-center gap-2">
+          ${
+            !d.is_default
+              ? `<button class="set-default-domain-btn clay-btn px-2.5 py-1 text-[11px] text-cyan-300 hover:text-white" data-domain="${d.domain}">Set Default</button>`
+              : ''
+          }
+          <button class="delete-domain-btn clay-btn px-2.5 py-1 text-[11px] text-red-400 hover:text-red-300" data-domain="${d.domain}">
+            Delete
+          </button>
+        </div>
+      </div>
+    `
+      )
+      .join('');
+
+    // Attach Action Listeners
+    document.querySelectorAll('.set-default-domain-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const dom = btn.getAttribute('data-domain');
+        await fetch(`/api/admin/domains/${encodeURIComponent(dom)}/default`, { method: 'PUT' });
+        await loadDomains();
+        loadAdminDomains();
+      });
+    });
+
+    document.querySelectorAll('.delete-domain-btn').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const dom = btn.getAttribute('data-domain');
+        if (!confirm(`Delete domain "${dom}" from SMTP and web server?`)) return;
+        const delRes = await fetch(`/api/admin/domains/${encodeURIComponent(dom)}`, { method: 'DELETE' });
+        const delData = await delRes.json();
+        if (delData.error) {
+          alert(delData.error);
+        } else {
+          await loadDomains();
+          loadAdminDomains();
+        }
+      });
+    });
+  } catch (err) {
+    console.error('Failed to load admin domains:', err);
   }
 }
 
-function showAdminLogin() {
-  adminLoginFormContainer.classList.remove('hidden');
-  adminKeyVaultContainer.classList.add('hidden');
-  adminLoginError.classList.add('hidden');
-  adminPasswordInput.value = '';
-}
-
-function showAdminVault() {
-  adminLoginFormContainer.classList.add('hidden');
-  adminKeyVaultContainer.classList.remove('hidden');
-  loadAdminKeys();
-}
-
-adminLoginForm.addEventListener('submit', async (e) => {
+// Add New Domain (Admin)
+addDomainForm.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const password = adminPasswordInput.value.trim();
-  if (!password) return;
+  const domain = newDomainInput.value.trim().toLowerCase();
+  const isDefault = newDomainDefaultCheck.checked;
+  if (!domain) return;
 
   try {
-    const res = await fetch('/api/admin/login', {
+    const res = await fetch('/api/admin/domains', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password }),
+      body: JSON.stringify({ domain, isDefault }),
     });
     const data = await res.json();
-    if (data.success && data.token) {
-      adminToken = data.token;
-      localStorage.setItem('cyber_admin_token', adminToken);
-      showAdminVault();
+    if (data.success) {
+      newDomainInput.value = '';
+      newDomainDefaultCheck.checked = false;
+      await loadDomains();
+      loadAdminDomains();
     } else {
-      adminLoginError.textContent = data.error || 'Invalid admin credentials';
-      adminLoginError.classList.remove('hidden');
+      alert(data.error || 'Failed to add domain');
     }
-  } catch {
-    adminLoginError.textContent = 'Server connection failed';
-    adminLoginError.classList.remove('hidden');
+  } catch (err) {
+    alert('Failed to connect to server');
   }
 });
 
-adminLogoutBtn.addEventListener('click', () => {
-  if (adminToken) {
-    fetch('/api/admin/logout', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${adminToken}` },
-    }).catch(() => {});
-  }
-  adminToken = null;
-  localStorage.removeItem('cyber_admin_token');
-  showAdminLogin();
-});
-
-async function loadAdminKeys() {
-  if (!adminToken) return;
+// Admin Stats
+async function loadAdminStats() {
   try {
-    const res = await fetch('/api/admin/keys', {
-      headers: { Authorization: `Bearer ${adminToken}` },
-    });
+    const res = await fetch('/api/admin/stats');
+    const data = await res.json();
+    statMailboxes.textContent = data.mailboxes || 0;
+    statPreserved.textContent = data.preserved_mailboxes || 0;
+    statMessages.textContent = data.messages || 0;
+    statCompressed.textContent = data.compressed_messages || 0;
+  } catch {}
+}
+
+// Trigger Compression Pass Now
+triggerPreserveBtn.addEventListener('click', async () => {
+  triggerPreserveBtn.textContent = 'Running...';
+  try {
+    const res = await fetch('/api/admin/preserve-now', { method: 'POST' });
+    const data = await res.json();
+    preserveStatusAlert.textContent = '✓ Preservation and cold compression pass completed successfully.';
+    preserveStatusAlert.classList.remove('hidden');
+    loadAdminStats();
+  } catch {
+    preserveStatusAlert.textContent = 'Pass execution error.';
+    preserveStatusAlert.classList.remove('hidden');
+  } finally {
+    triggerPreserveBtn.textContent = 'Run Compression Pass Now';
+  }
+});
+
+// Admin Keys
+async function loadAdminKeys() {
+  try {
+    const res = await fetch('/api/admin/keys');
     const data = await res.json();
     const keys = data.keys || [];
 
@@ -762,13 +1090,13 @@ async function loadAdminKeys() {
     activeKeysList.innerHTML = keys
       .map(
         (k) => `
-      <div class="neo-inset p-3 rounded-xl flex items-center justify-between text-xs font-mono">
+      <div class="clay-inset p-3 rounded-xl flex items-center justify-between text-xs font-mono">
         <div>
           <div class="text-white font-bold">${escapeHtml(k.name)} <span class="text-[10px] text-cyan-400 font-normal">[${k.permissions}]</span></div>
           <div class="text-[11px] text-gray-400 mt-0.5">${k.prefix}</div>
           <div class="text-[10px] text-gray-500">Created: ${new Date(k.created_at).toLocaleDateString()} ${k.last_used_at ? '• Active' : ''}</div>
         </div>
-        <button class="revoke-key-btn text-xs text-red-400 hover:text-red-300 font-mono" data-id="${k.id}">
+        <button class="revoke-key-btn clay-btn px-2.5 py-1 text-xs text-red-400 hover:text-red-300 font-mono" data-id="${k.id}">
           Revoke
         </button>
       </div>
@@ -780,16 +1108,11 @@ async function loadAdminKeys() {
       btn.addEventListener('click', async () => {
         const id = btn.getAttribute('data-id');
         if (!confirm('Revoke this API Key immediately?')) return;
-        await fetch(`/api/admin/keys/${id}`, {
-          method: 'DELETE',
-          headers: { Authorization: `Bearer ${adminToken}` },
-        });
+        await fetch(`/api/admin/keys/${id}`, { method: 'DELETE' });
         loadAdminKeys();
       });
     });
-  } catch (err) {
-    console.error('Failed to load keys:', err);
-  }
+  } catch {}
 }
 
 createApiKeyForm.addEventListener('submit', async (e) => {
@@ -801,10 +1124,7 @@ createApiKeyForm.addEventListener('submit', async (e) => {
   try {
     const res = await fetch('/api/admin/keys', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${adminToken}`,
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, permissions }),
     });
     const data = await res.json();
@@ -829,7 +1149,7 @@ copyNewKeyBtn.addEventListener('click', () => {
 });
 
 // ==============================================================================
-// 8. INTERACTIVE CYBER API CHECKER / TESTER (Requested Feature)
+// 6. INTERACTIVE API CHECKER
 // ==============================================================================
 
 openApiTesterBtn.addEventListener('click', () => {
@@ -866,11 +1186,8 @@ runApiTestBtn.addEventListener('click', async () => {
     body = JSON.stringify({ apiKey });
   } else if (endpoint === 'stats') {
     url = '/api/stats';
-  } else if (endpoint === 'create-inbox') {
-    url = '/api/inbox/create';
-    method = 'POST';
-    headers['Content-Type'] = 'application/json';
-    body = JSON.stringify({ address });
+  } else if (endpoint === 'domains') {
+    url = '/api/domains';
   }
 
   testerStatusCode.textContent = 'Connecting...';
@@ -879,14 +1196,9 @@ runApiTestBtn.addEventListener('click', async () => {
 
   const t0 = performance.now();
   try {
-    const res = await fetch(url, {
-      method,
-      headers,
-      body,
-    });
+    const res = await fetch(url, { method, headers, body });
     const t1 = performance.now();
-    const latency = Math.round(t1 - t0);
-    testerLatency.textContent = `${latency}ms`;
+    testerLatency.textContent = `${Math.round(t1 - t0)}ms`;
 
     const statusText = `${res.status} ${res.statusText}`;
     testerStatusCode.textContent = statusText;
@@ -922,8 +1234,8 @@ copyCurlBtn.addEventListener('click', () => {
     curl = `curl -X POST "${host}/api/admin/check-key" \\\n  -H "Content-Type: application/json" \\\n  -d '{"apiKey": "${apiKey || 'YOUR_KEY_HERE'}"}'`;
   } else if (endpoint === 'stats') {
     curl = `curl -X GET "${host}/api/stats"`;
-  } else if (endpoint === 'create-inbox') {
-    curl = `curl -X POST "${host}/api/inbox/create" \\\n  -H "Content-Type: application/json" \\\n  -d '{"address": "${address}"}'`;
+  } else if (endpoint === 'domains') {
+    curl = `curl -X GET "${host}/api/domains"`;
   }
 
   if (apiKey && endpoint !== 'check-key') {
@@ -931,9 +1243,9 @@ copyCurlBtn.addEventListener('click', () => {
   }
 
   navigator.clipboard.writeText(curl).then(() => {
-    copyCurlBtn.innerHTML = '<span>✓</span> <span>Copied cURL!</span>';
+    copyCurlBtn.textContent = '✓ Copied cURL!';
     setTimeout(() => {
-      copyCurlBtn.innerHTML = '<span>📋</span> <span>Copy cURL</span>';
+      copyCurlBtn.textContent = 'Copy cURL';
     }, 2000);
   });
 });
@@ -949,5 +1261,5 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-// Boot application
+// Boot
 initApp();

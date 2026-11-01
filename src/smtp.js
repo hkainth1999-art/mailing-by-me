@@ -1,8 +1,8 @@
 import { SMTPServer } from 'smtp-server';
 import { simpleParser } from 'mailparser';
 import crypto from 'crypto';
-import { SMTP_PORT, DOMAINS, MAX_MESSAGE_SIZE } from './config.js';
-import { saveMessage } from './db.js';
+import { SMTP_PORT, MAX_MESSAGE_SIZE } from './config.js';
+import { saveMessage, isDomainAllowed, getDomainNames, maskIpAddresses } from './db.js';
 import { extractDiscordVerification } from './discord.js';
 
 let broadcastCallback = null;
@@ -16,21 +16,16 @@ export function startSmtpServer() {
     disabledCommands: ['AUTH', 'STARTTLS'],
     authOptional: true,
     size: MAX_MESSAGE_SIZE,
-    banner: 'Rizz Mails Forsaken SMTP Service Ready',
+    banner: 'Crown Mail Vault Inbound SMTP Gateway',
 
-    // Validate recipient
+    // Validate recipient domain dynamically against active domains
     onRcptTo(address, session, callback) {
       const recipient = address.address.toLowerCase().trim();
       const domain = recipient.split('@')[1];
 
-      // If domain matches any configured domain or catch-all
-      const isAllowed =
-        DOMAINS.includes('*') ||
-        DOMAINS.includes(domain) ||
-        DOMAINS.length === 0;
-
-      if (!isAllowed) {
-        console.warn(`[SMTP] Rejected recipient ${recipient} (Domain ${domain} not in configured list: ${DOMAINS.join(', ')})`);
+      if (!isDomainAllowed(domain)) {
+        const allowed = getDomainNames();
+        console.warn(`[SMTP] Relaying rejected for ${recipient} (Domain ${domain} not in configured domains: ${allowed.join(', ')})`);
         return callback(new Error(`Relaying denied: domain ${domain} is not configured on this server.`));
       }
 
@@ -58,7 +53,8 @@ export function startSmtpServer() {
           }
 
           if (!recipient) {
-            recipient = `inbox@${DOMAINS[0] || 'localhost'}`;
+            const domains = getDomainNames();
+            recipient = `vault@${domains[0] || 'localhost'}`;
           }
 
           // Clean recipient
@@ -69,7 +65,7 @@ export function startSmtpServer() {
           const fromAddress = fromItem?.address || session.envelope?.mailFrom?.address || 'unknown@sender.local';
           const fromName = fromItem?.name || null;
 
-          // Extract Discord code / link
+          // Extract Discord verification code & URL
           const subject = parsed.subject || '(No Subject)';
           const textBody = parsed.text || '';
           const htmlBody = parsed.html || parsed.textAsHtml || '';
@@ -98,7 +94,7 @@ export function startSmtpServer() {
             snippet,
             text_body: textBody,
             html_body: htmlBody,
-            raw_mime: rawMime,
+            raw_mime: maskIpAddresses(rawMime),
             attachments,
             headers: parsed.headers ? Object.fromEntries(parsed.headers) : {},
             discord_code: discordCode,
@@ -106,7 +102,7 @@ export function startSmtpServer() {
             received_at: Date.now(),
           };
 
-          // Save to SQLite
+          // Save to SQLite Vault (Conserved indefinitely, 0 deletions)
           saveMessage(messageRecord);
 
           console.log(`\n📬 [SMTP RECEIVED] To: ${cleanRecipient} | From: ${fromAddress} | Subject: "${subject}"`);
@@ -135,7 +131,7 @@ export function startSmtpServer() {
             });
           }
 
-          callback(null, 'OK: Message accepted and stored');
+          callback(null, 'OK: Message accepted and vaulted');
         } catch (err) {
           console.error('[SMTP] Error parsing email:', err);
           callback(new Error('Internal server error parsing email'));
@@ -149,9 +145,8 @@ export function startSmtpServer() {
   });
 
   server.listen(SMTP_PORT, '0.0.0.0', () => {
-    console.log(`🚀 [SMTP Server] Listening directly on port ${SMTP_PORT} (Accepting mail for: ${DOMAINS.join(', ')})`);
+    console.log(`🚀 [SMTP Server] Listening on port ${SMTP_PORT} (Domains dynamically managed via Admin Panel)`);
   });
 
   return server;
 }
-
