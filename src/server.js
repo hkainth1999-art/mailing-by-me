@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { HTTP_PORT, HTTPS_PORT, FORCE_HTTPS, SSL_KEY_PATH, SSL_CERT_PATH, OWNER_IDS, DISCORD_CLIENT_ID } from './config.js';
 import {
   saveMailbox,
+  deleteMailbox,
   getMailboxDetails,
   listRecentMailboxes,
   listUserMailboxes,
@@ -309,6 +310,103 @@ app.get('/api/domains', (req, res) => {
   });
 });
 
+// Public alias for GET /domains
+app.get('/domains', (req, res) => {
+  const domains = getDomains();
+  res.json({
+    domains: domains.map((d) => d.domain),
+    default: domains.find((d) => d.is_default)?.domain || domains[0]?.domain || 'crwnmail.com',
+  });
+});
+
+// API Documentation JSON Endpoint
+app.get(['/api/docs', '/docs'], (req, res) => {
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host;
+  const baseUrl = `${protocol}://${host}`;
+  const domains = getDomains();
+
+  res.json({
+    service: 'Crown Mail Vault API',
+    version: '2.0.0',
+    base_url: baseUrl,
+    authentication: {
+      type: 'Discord Session Cookie OR x-api-key header',
+      discord_login_url: `${baseUrl}/api/auth/discord/login`,
+    },
+    quota: {
+      standard_user: '3 active mailboxes max (delete a mailbox to free a slot)',
+      vault_owner: 'Unlimited mailboxes',
+    },
+    endpoints: [
+      {
+        path: '/domains',
+        method: 'GET',
+        description: 'Get list of active inbound domains accepted by the mail server.',
+        curl: `curl -X GET "${baseUrl}/domains"`,
+        response_example: {
+          domains: domains.map((d) => d.domain),
+          default: domains[0]?.domain || 'rizzcord.site',
+        },
+      },
+      {
+        path: '/api/domains',
+        method: 'GET',
+        description: 'Get list of active inbound domains (API namespace).',
+        curl: `curl -X GET "${baseUrl}/api/domains"`,
+      },
+      {
+        path: '/api/inbox/create',
+        method: 'POST',
+        description: 'Create a new mailbox (Standard users limit: 3 active mailboxes; Owner: unlimited).',
+        headers: { 'Content-Type': 'application/json' },
+        body: { address: `test_${Date.now().toString().slice(-4)}@${domains[0]?.domain || 'rizzcord.site'}` },
+        curl: `curl -X POST "${baseUrl}/api/inbox/create" -H "Content-Type: application/json" -d '{"address":"alexander@${domains[0]?.domain || 'rizzcord.site'}"}'`,
+      },
+      {
+        path: '/api/messages/:address',
+        method: 'GET',
+        description: 'List all emails received in an inbox.',
+        curl: `curl -X GET "${baseUrl}/api/messages/alexander@${domains[0]?.domain || 'rizzcord.site'}"`,
+      },
+      {
+        path: '/api/messages/:address/:id',
+        method: 'GET',
+        description: 'Get full content of an email (HTML, plain text, headers, attachments).',
+        curl: `curl -X GET "${baseUrl}/api/messages/alexander@${domains[0]?.domain || 'rizzcord.site'}/1"`,
+      },
+      {
+        path: '/api/discord/:address',
+        method: 'GET',
+        description: 'Auto-extract Discord 6-digit verification code or click verify link.',
+        curl: `curl -X GET "${baseUrl}/api/discord/alexander@${domains[0]?.domain || 'rizzcord.site'}"`,
+      },
+      {
+        path: '/api/user/inboxes',
+        method: 'GET',
+        description: 'List your created mailboxes, with count (e.g. 1/3) and quota limit.',
+        curl: `curl -X GET "${baseUrl}/api/user/inboxes"`,
+      },
+      {
+        path: '/api/user/mailboxes/:address',
+        method: 'DELETE',
+        description: 'Delete a mailbox and its emails to free up 1 slot in your 3-mailbox quota.',
+        curl: `curl -X DELETE "${baseUrl}/api/user/mailboxes/alexander@${domains[0]?.domain || 'rizzcord.site'}"`,
+      },
+      {
+        path: '/api/inbox/:address',
+        method: 'DELETE',
+        description: 'Purge all messages in an inbox.',
+        curl: `curl -X DELETE "${baseUrl}/api/inbox/alexander@${domains[0]?.domain || 'rizzcord.site'}"`,
+      },
+    ],
+    websocket: {
+      url: `wss://${host}/ws?address=<your-address>`,
+      description: 'Connect via WebSocket to receive instant real-time notifications for incoming emails.',
+    },
+  });
+});
+
 // System Stats (Zero IP leaks)
 app.get('/api/stats', (req, res) => {
   res.json({
@@ -324,13 +422,20 @@ app.get('/api/inbox/recent', (req, res) => {
   res.json({ recent });
 });
 
-// List user-created mailboxes (Discord logged-in user)
+// List user-created mailboxes (Discord logged-in user with 3-mailbox quota tracking)
 app.get('/api/user/inboxes', requireDiscordAuth, (req, res) => {
   const mailboxes = listUserMailboxes(req.user.user_id);
-  res.json({ mailboxes });
+  const isOwner = Boolean(req.user.is_owner);
+  res.json({
+    mailboxes,
+    count: mailboxes.length,
+    limit: isOwner ? 'unlimited' : 3,
+    isOwner,
+    canCreate: isOwner || mailboxes.length < 3,
+  });
 });
 
-// Create or register a custom mailbox (Discord Login Required!)
+// Create or register a custom mailbox (Discord Login Required + 3 Mailbox Limit for Standard Users!)
 app.post('/api/inbox/create', requireDiscordAuth, (req, res) => {
   const { address, username, domain } = req.body;
   const configuredDomains = getDomainNames();
@@ -346,14 +451,53 @@ app.post('/api/inbox/create', requireDiscordAuth, (req, res) => {
     return res.status(400).json({ error: 'Please provide a valid mailbox address or username + domain' });
   }
 
+  // 3-Mailbox Quota Enforcement for Standard Users
+  const isOwner = Boolean(req.user.is_owner);
+  const userMailboxes = listUserMailboxes(req.user.user_id);
+  const alreadyOwns = userMailboxes.some((m) => m.address === fullAddress);
+
+  if (!isOwner && !alreadyOwns && userMailboxes.length >= 3) {
+    return res.status(403).json({
+      success: false,
+      error: 'Standard user quota reached (3/3 active mailboxes). Please delete one of your mailboxes to create a new one.',
+      code: 'QUOTA_REACHED',
+      limit: 3,
+      current: userMailboxes.length,
+    });
+  }
+
   const record = saveMailbox(fullAddress, req.user.user_id, req.user.username);
+  const updatedMailboxes = listUserMailboxes(req.user.user_id);
+
   res.json({
     success: true,
     address: record.address,
     created_at: record.created_at,
     is_preserved: record.is_preserved,
+    count: updatedMailboxes.length,
+    limit: isOwner ? 'unlimited' : 3,
     policy: 'Infinite Retention (Preserved after 24h, 0 deletions)',
   });
+});
+
+// Delete Mailbox Route (frees 1 slot in the 3-mailbox quota)
+app.delete(['/api/user/mailboxes/:address', '/api/mailboxes/:address'], requireDiscordAuth, (req, res) => {
+  const { address } = req.params;
+  const clean = address.toLowerCase().trim();
+  try {
+    const isOwner = Boolean(req.user.is_owner);
+    deleteMailbox(clean, req.user.user_id, isOwner);
+    const updated = listUserMailboxes(req.user.user_id);
+    res.json({
+      success: true,
+      deleted: clean,
+      count: updated.length,
+      limit: isOwner ? 'unlimited' : 3,
+      message: `Mailbox ${clean} and all its emails have been deleted. 1 slot freed.`,
+    });
+  } catch (err) {
+    res.status(403).json({ success: false, error: err.message });
+  }
 });
 
 // Check Mailbox Status (Active vs Preserved state)

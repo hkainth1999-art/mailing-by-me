@@ -340,6 +340,26 @@ export function listUserMailboxes(discordUserId) {
     }));
 }
 
+export function deleteMailbox(address, discordUserId = null, isOwner = false) {
+  const cleanAddr = address.toLowerCase().trim();
+  if (db) {
+    if (discordUserId && !isOwner) {
+      const mb = db.prepare('SELECT discord_user_id FROM mailboxes WHERE address = ?').get(cleanAddr);
+      if (mb && mb.discord_user_id && mb.discord_user_id !== discordUserId) {
+        throw new Error('Unauthorized: You can only delete your own mailboxes');
+      }
+    }
+    // Delete all messages belonging to this mailbox
+    db.prepare('DELETE FROM messages WHERE inbox_address = ?').run(cleanAddr);
+    // Delete the mailbox record
+    const res = db.prepare('DELETE FROM mailboxes WHERE address = ?').run(cleanAddr);
+    return res.changes > 0;
+  } else {
+    memoryStore.messages = memoryStore.messages.filter((m) => m.inbox_address !== cleanAddr);
+    return memoryStore.mailboxes.delete(cleanAddr);
+  }
+}
+
 // --- Message Compression & Preservation Logic ---
 // Conserves space after 24 hours: compresses text/html/mime into gzip/deflate blobs.
 // ZERO messages are ever deleted! When opened, messages are decompressed on-the-fly.

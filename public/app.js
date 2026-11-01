@@ -297,7 +297,7 @@ function getCleanAddressFromURL() {
 
 // Update URL cleanly using HTML5 History API (no messy or old #cyber-... hash)
 function updateCleanURLRoute(address) {
-  const cleanRoute = `/inbox/${encodeURIComponent(address)}`;
+  const cleanRoute = `/inbox/${address}`;
   if (window.location.pathname !== cleanRoute || window.location.hash) {
     window.history.replaceState({ address }, '', cleanRoute);
   }
@@ -459,13 +459,28 @@ async function checkDiscordAuth() {
   }
 }
 
-// User Created Inboxes
+// User Created Inboxes & 3-Mailbox Quota Manager
 async function loadUserInboxes() {
   try {
     const res = await fetch('/api/user/inboxes');
     const data = await res.json();
     const mailboxes = data.mailboxes || [];
     userInboxesCountBadge.textContent = mailboxes.length;
+
+    // Update Quota Pill
+    const userQuotaPill = document.getElementById('userQuotaPill');
+    const userQuotaHint = document.getElementById('userQuotaHint');
+    if (userQuotaPill) {
+      if (data.isOwner) {
+        userQuotaPill.textContent = `${mailboxes.length} / Unlimited (Owner)`;
+        userQuotaPill.className = 'px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-300 border border-amber-500/30 text-[10px] font-bold';
+        if (userQuotaHint) userQuotaHint.textContent = 'Owner: Unlimited active mailboxes';
+      } else {
+        userQuotaPill.textContent = `${mailboxes.length} / 3 Active`;
+        userQuotaPill.className = `px-2 py-0.5 rounded-full ${mailboxes.length >= 3 ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' : 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/30'} text-[10px] font-bold`;
+        if (userQuotaHint) userQuotaHint.textContent = mailboxes.length >= 3 ? 'Quota Full (3/3) - Delete a mailbox to free a slot' : 'Standard limit: 3 mailboxes';
+      }
+    }
 
     if (mailboxes.length === 0) {
       userInboxesList.innerHTML = '<span class="text-xs text-gray-500 font-mono">No mailboxes created under your Discord account yet.</span>';
@@ -475,12 +490,17 @@ async function loadUserInboxes() {
     userInboxesList.innerHTML = mailboxes
       .map(
         (m) => `
-        <button class="user-inbox-chip clay-pill px-2.5 py-1 text-xs font-mono text-cyan-300 hover:text-white flex items-center gap-1.5" data-addr="${m.address}">
-          <span>📬</span>
-          <span>${m.address}</span>
-          ${m.is_preserved ? '<span class="text-[9px] text-cyan-400 font-bold">❄️</span>' : ''}
-          <span class="text-[10px] text-gray-400">(${m.count})</span>
-        </button>
+        <div class="clay-pill px-2.5 py-1 text-xs font-mono flex items-center gap-2 border border-white/5 bg-vault-900/60">
+          <button class="user-inbox-chip text-cyan-300 hover:text-white flex items-center gap-1.5" data-addr="${m.address}" title="Open Inbox">
+            <span>📬</span>
+            <span class="font-bold">${m.address}</span>
+            ${m.is_preserved ? '<span class="text-[9px] text-cyan-400 font-bold" title="Cold Storage">❄️</span>' : ''}
+            <span class="text-[10px] text-gray-400">(${m.count})</span>
+          </button>
+          <button class="delete-user-mailbox-btn text-gray-500 hover:text-rose-400 p-0.5 rounded transition-all" data-addr="${m.address}" title="Delete Mailbox (Frees 1 slot)">
+            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+          </button>
+        </div>
       `
       )
       .join('');
@@ -488,6 +508,30 @@ async function loadUserInboxes() {
     document.querySelectorAll('.user-inbox-chip').forEach((btn) => {
       btn.addEventListener('click', () => {
         setAddress(btn.getAttribute('data-addr'));
+      });
+    });
+
+    document.querySelectorAll('.delete-user-mailbox-btn').forEach((btn) => {
+      btn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const addr = btn.getAttribute('data-addr');
+        if (!confirm(`Delete mailbox "${addr}"?\n\nThis will permanently delete this mailbox and all its messages, immediately freeing up 1 slot in your 3-mailbox quota.`)) {
+          return;
+        }
+        try {
+          const res = await fetch(`/api/user/mailboxes/${encodeURIComponent(addr)}`, { method: 'DELETE' });
+          const resData = await res.json();
+          if (resData.success) {
+            if (currentAddress === addr) {
+              setStandbyMode();
+            }
+            await loadUserInboxes();
+          } else {
+            alert(resData.error || 'Failed to delete mailbox');
+          }
+        } catch (err) {
+          alert('Network error while deleting mailbox');
+        }
       });
     });
   } catch (err) {}
@@ -1046,6 +1090,33 @@ refreshInboxBtn.addEventListener('click', () => {
   checkDiscordVerification();
 });
 
+// Delete Active Mailbox (frees 1 slot in 3-mailbox quota)
+const deleteMailboxBtn = document.getElementById('deleteMailboxBtn');
+if (deleteMailboxBtn) {
+  deleteMailboxBtn.addEventListener('click', async () => {
+    if (!currentAddress) {
+      alert('No mailbox is currently active.');
+      return;
+    }
+    if (!confirm(`Delete mailbox "${currentAddress}"?\n\nThis will permanently delete this mailbox and all its emails, freeing up 1 slot in your 3-mailbox quota.`)) {
+      return;
+    }
+    try {
+      const res = await fetch(`/api/user/mailboxes/${encodeURIComponent(currentAddress)}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (data.success) {
+        alert(`Mailbox ${currentAddress} deleted successfully! 1 quota slot freed.`);
+        setStandbyMode();
+        await loadUserInboxes();
+      } else {
+        alert(data.error || 'Failed to delete mailbox');
+      }
+    } catch {
+      alert('Network error while deleting mailbox');
+    }
+  });
+}
+
 // Search Filter
 feedSearchInput.addEventListener('input', () => {
   renderFeed();
@@ -1335,12 +1406,52 @@ copyNewKeyBtn.addEventListener('click', () => {
 
 openApiTesterBtn.addEventListener('click', () => {
   testerAddressInput.value = currentAddress;
+  const baseUrl = window.location.origin;
+  const docsBaseUrlText = document.getElementById('docsBaseUrlText');
+  if (docsBaseUrlText) docsBaseUrlText.textContent = baseUrl;
+  document.querySelectorAll('.doc-curl-url').forEach((el) => {
+    el.textContent = baseUrl;
+  });
   apiTesterModal.classList.remove('hidden');
 });
 
 closeApiTesterBtn.addEventListener('click', () => {
   apiTesterModal.classList.add('hidden');
 });
+
+// API Modal Tab Switching
+const tabBtnApiTester = document.getElementById('tabBtnApiTester');
+const tabBtnApiDocs = document.getElementById('tabBtnApiDocs');
+const apiTesterTabPane = document.getElementById('apiTesterTabPane');
+const apiDocsTabPane = document.getElementById('apiDocsTabPane');
+const copyBaseUrlBtn = document.getElementById('copyBaseUrlBtn');
+
+if (tabBtnApiTester && tabBtnApiDocs) {
+  tabBtnApiTester.addEventListener('click', () => {
+    tabBtnApiTester.className = 'px-3 py-1 text-xs font-mono font-bold rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
+    tabBtnApiDocs.className = 'px-3 py-1 text-xs font-mono font-bold rounded-xl text-gray-400 hover:text-white';
+    apiTesterTabPane.classList.remove('hidden');
+    apiDocsTabPane.classList.add('hidden');
+  });
+
+  tabBtnApiDocs.addEventListener('click', () => {
+    tabBtnApiDocs.className = 'px-3 py-1 text-xs font-mono font-bold rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-500/40';
+    tabBtnApiTester.className = 'px-3 py-1 text-xs font-mono font-bold rounded-xl text-gray-400 hover:text-white';
+    apiDocsTabPane.classList.remove('hidden');
+    apiTesterTabPane.classList.add('hidden');
+  });
+}
+
+if (copyBaseUrlBtn) {
+  copyBaseUrlBtn.addEventListener('click', () => {
+    navigator.clipboard.writeText(window.location.origin).then(() => {
+      copyBaseUrlBtn.innerHTML = '<span>✓</span><span>Copied!</span>';
+      setTimeout(() => {
+        copyBaseUrlBtn.innerHTML = '<span>📋</span><span>Copy Base URL</span>';
+      }, 2000);
+    });
+  });
+}
 
 runApiTestBtn.addEventListener('click', async () => {
   const endpoint = testerEndpointSelect.value;
@@ -1356,10 +1467,16 @@ runApiTestBtn.addEventListener('click', async () => {
     headers['x-api-key'] = apiKey;
   }
 
-  if (endpoint === 'messages') {
+  if (endpoint === 'domains') {
+    url = '/domains';
+  } else if (endpoint === 'api-domains') {
+    url = '/api/domains';
+  } else if (endpoint === 'messages') {
     url = `/api/messages/${encodeURIComponent(address)}`;
   } else if (endpoint === 'discord') {
     url = `/api/discord/${encodeURIComponent(address)}?wait=false`;
+  } else if (endpoint === 'user-inboxes') {
+    url = '/api/user/inboxes';
   } else if (endpoint === 'check-key') {
     url = '/api/admin/check-key';
     method = 'POST';
@@ -1367,8 +1484,6 @@ runApiTestBtn.addEventListener('click', async () => {
     body = JSON.stringify({ apiKey });
   } else if (endpoint === 'stats') {
     url = '/api/stats';
-  } else if (endpoint === 'domains') {
-    url = '/api/domains';
   }
 
   testerStatusCode.textContent = 'Connecting...';
@@ -1407,16 +1522,24 @@ copyCurlBtn.addEventListener('click', () => {
   const host = window.location.origin;
 
   let curl = '';
-  if (endpoint === 'messages') {
+  if (endpoint === 'domains') {
+    curl = `curl -X GET "${host}/domains"`;
+  } else if (endpoint === 'api-domains') {
+    curl = `curl -X GET "${host}/api/domains"`;
+  } else if (endpoint === 'messages') {
     curl = `curl -X GET "${host}/api/messages/${address}"`;
   } else if (endpoint === 'discord') {
     curl = `curl -X GET "${host}/api/discord/${address}?wait=true&timeout=30"`;
+  } else if (endpoint === 'user-inboxes') {
+    curl = `curl -X GET "${host}/api/user/inboxes"`;
   } else if (endpoint === 'check-key') {
     curl = `curl -X POST "${host}/api/admin/check-key" \\\n  -H "Content-Type: application/json" \\\n  -d '{"apiKey": "${apiKey || 'YOUR_KEY_HERE'}"}'`;
   } else if (endpoint === 'stats') {
     curl = `curl -X GET "${host}/api/stats"`;
-  } else if (endpoint === 'domains') {
-    curl = `curl -X GET "${host}/api/domains"`;
+  }
+
+  if (apiKey && endpoint !== 'check-key') {
+    curl += ` \\\n  -H "x-api-key: ${apiKey}"`;
   }
 
   if (apiKey && endpoint !== 'check-key') {
