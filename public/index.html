@@ -282,15 +282,15 @@
           </span>
         </div>
         <div class="flex items-center gap-3">
-          <span id="activeAddressDisplay" class="text-lg sm:text-xl font-mono font-black text-white tracking-tight select-all">
-            loading...
+          <span id="activeAddressDisplay" class="text-base sm:text-lg font-mono text-gray-400 italic select-none">
+            No Mailbox Active
           </span>
-          <button id="copyActiveAddressBtn" title="Copy Address to Clipboard" class="clay-btn px-2.5 py-1 text-xs font-mono text-gray-300 hover:text-cyan-400 gap-1">
+          <button id="copyActiveAddressBtn" title="Copy Address to Clipboard" class="clay-btn px-2.5 py-1 text-xs font-mono text-gray-300 hover:text-cyan-400 gap-1 opacity-40 cursor-not-allowed">
             <!-- Copy SVG -->
             <svg class="svg-icon-sm" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
             <span id="copyBtnText">Copy</span>
           </button>
-          <button id="openQrBtn" title="Show QR Code" class="clay-btn px-2.5 py-1 text-xs font-mono text-gray-300 hover:text-purple-400 gap-1">
+          <button id="openQrBtn" title="Show QR Code" class="clay-btn px-2.5 py-1 text-xs font-mono text-gray-300 hover:text-purple-400 gap-1 opacity-40 cursor-not-allowed">
             <!-- QR SVG -->
             <svg class="svg-icon-sm" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"></rect><rect x="14" y="3" width="7" height="7"></rect><rect x="14" y="14" width="7" height="7"></rect><rect x="3" y="14" width="7" height="7"></rect></svg>
             <span>QR</span>

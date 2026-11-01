@@ -304,6 +304,40 @@ function updateCleanURLRoute(address) {
   }
 }
 
+// Standby Mode: No email is automatically created on visit or login!
+function setStandbyMode() {
+  currentAddress = '';
+  activeAddressDisplay.textContent = 'No Mailbox Active';
+  activeAddressDisplay.className = 'text-base sm:text-lg font-mono text-gray-500 italic select-none';
+  pasteInboxInput.value = '';
+  testerAddressInput.value = '';
+  activePreserveBadge.classList.add('hidden');
+  preservedStateBanner.classList.add('hidden');
+
+  copyActiveAddressBtn.classList.add('opacity-40', 'cursor-not-allowed');
+  openQrBtn.classList.add('opacity-40', 'cursor-not-allowed');
+  clearCurrentInboxBtn.classList.add('opacity-40', 'cursor-not-allowed');
+  refreshInboxBtn.classList.add('opacity-40', 'cursor-not-allowed');
+
+  selectedMessage = null;
+  noMessageSelected.classList.remove('hidden');
+  activeMessageViewer.classList.add('hidden');
+  messagesList.innerHTML = '';
+  feedCountBadge.textContent = '0';
+  emptyFeedState.classList.remove('hidden');
+  emptyFeedState.innerHTML = `
+    <div class="w-12 h-12 rounded-2xl clay-inset flex items-center justify-center text-gray-500">
+      <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path><polyline points="22,6 12,13 2,6"></polyline></svg>
+    </div>
+    <div>
+      <h4 class="text-sm font-mono font-bold text-gray-300">No Mailbox Active</h4>
+      <p class="text-xs text-gray-500 font-mono mt-1 max-w-xs">
+        Click <strong class="text-cyan-400">"Random Mail"</strong>, <strong class="text-emerald-400">"Custom"</strong>, or paste an address to open an inbox.
+      </p>
+    </div>
+  `;
+}
+
 // ==============================================================================
 // 3. BOOT & AUTHENTICATION MANAGEMENT
 // ==============================================================================
@@ -314,7 +348,7 @@ async function initApp() {
   // Load Domains from Server (Managed dynamically in Admin Panel)
   await loadDomains();
 
-  // Check Discord Authentication
+  // Check Discord Authentication (Does NOT auto-create mail)
   await checkDiscordAuth();
 
   // Check clean address from URL (ignoring any old cyber hash/route)
@@ -322,9 +356,8 @@ async function initApp() {
   if (routeAddress) {
     setAddress(routeAddress);
   } else {
-    // Generate fresh initial address with proper random name/alphabet+number (NO 'cyber')
-    const initialName = generateRandomMailboxName();
-    setAddress(`${initialName}@${currentDomain}`);
+    // STANDBY: Do NOT auto-create any mailbox when visiting site or logging in!
+    setStandbyMode();
   }
 
   renderRecentMailboxes();
@@ -521,9 +554,16 @@ function setAddress(addr, updateHistory = true) {
     updateCleanURLRoute(currentAddress);
   }
 
+  activeAddressDisplay.className = 'text-lg sm:text-xl font-mono font-black text-white tracking-tight select-all';
   activeAddressDisplay.textContent = currentAddress;
   pasteInboxInput.value = currentAddress;
   testerAddressInput.value = currentAddress;
+
+  copyActiveAddressBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+  openQrBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+  clearCurrentInboxBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+  refreshInboxBtn.classList.remove('opacity-40', 'cursor-not-allowed');
+  activePreserveBadge.classList.remove('hidden');
 
   const parts = currentAddress.split('@');
   if (parts[1] && availableDomains.includes(parts[1])) {
@@ -942,6 +982,7 @@ customCreateForm.addEventListener('submit', async (e) => {
 // Domain Selector Change
 mainDomainSelect.addEventListener('change', (e) => {
   currentDomain = e.target.value;
+  if (!currentAddress) return; // Do NOT auto-create if in standby
   const parts = currentAddress.split('@');
   const user = parts[0] || generateRandomMailboxName();
   setAddress(`${user}@${currentDomain}`);
@@ -949,6 +990,7 @@ mainDomainSelect.addEventListener('change', (e) => {
 
 // Copy Address
 copyActiveAddressBtn.addEventListener('click', () => {
+  if (!currentAddress) return;
   navigator.clipboard.writeText(currentAddress).then(() => {
     copyBtnText.textContent = 'Copied!';
     setTimeout(() => {
@@ -972,7 +1014,7 @@ copyDiscordCodeBtn.addEventListener('click', () => {
 
 // Delete Single Message
 deleteMessageBtn.addEventListener('click', async () => {
-  if (!selectedMessage) return;
+  if (!selectedMessage || !currentAddress) return;
   if (!confirm('Permanently delete this email from the vault?')) return;
 
   try {
@@ -990,6 +1032,7 @@ deleteMessageBtn.addEventListener('click', async () => {
 
 // Clear Inbox
 clearCurrentInboxBtn.addEventListener('click', async () => {
+  if (!currentAddress) return;
   if (!confirm(`Purge all emails in ${currentAddress}?`)) return;
   try {
     await fetch(`/api/inbox/${encodeURIComponent(currentAddress)}`, {
@@ -1007,7 +1050,10 @@ clearCurrentInboxBtn.addEventListener('click', async () => {
 
 // Sync / Refresh
 refreshInboxBtn.addEventListener('click', () => {
+  if (!currentAddress) return;
   loadMessages();
+  checkDiscordVerification();
+});
   checkDiscordVerification();
 });
 
@@ -1034,6 +1080,7 @@ function updateSoundUI() {
 
 // QR Code Modal
 openQrBtn.addEventListener('click', () => {
+  if (!currentAddress) return;
   qrAddressText.textContent = currentAddress;
   if (window.QRCode) {
     QRCode.toCanvas(qrCanvas, currentAddress, { width: 220, margin: 1 }, (err) => {
