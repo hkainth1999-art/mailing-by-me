@@ -159,7 +159,8 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
   const handleSelectAddress = (addr: string) => {
     let clean = (addr || '').toLowerCase().trim();
     if (!clean.includes('@')) {
-      clean = `${clean}@${currentDomain}`;
+      const randomDomain = domains[Math.floor(Math.random() * domains.length)] || 'rizzcord.site';
+      clean = `${clean}@${randomDomain}`;
     }
     setCurrentAddress(clean);
     onAddressChange(clean);
@@ -178,11 +179,12 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
       return;
     }
 
-    // Generate random proper dictionary name
-    const adjectives = ['vortex', 'phantom', 'shadow', 'blaze', 'crwn', 'zenith', 'pulse', 'mystic', 'glacier', 'silver'];
-    const nouns = ['vault', 'mail', 'node', 'falcon', 'titan', 'stream', 'sentinel', 'matrix', 'echo', 'frost'];
+    // Generate random dictionary name & select randomly from ANY active domain!
+    const adjectives = ['vortex', 'phantom', 'shadow', 'blaze', 'crwn', 'zenith', 'pulse', 'mystic', 'glacier', 'silver', 'nova', 'onyx', 'falcon'];
+    const nouns = ['vault', 'mail', 'node', 'stream', 'sentinel', 'matrix', 'echo', 'frost', 'apex', 'beacon'];
     const randomName = `${adjectives[Math.floor(Math.random() * adjectives.length)]}${nouns[Math.floor(Math.random() * nouns.length)]}${Math.floor(Math.random() * 89 + 10)}`;
-    const fullAddr = `${randomName}@${currentDomain}`;
+    const randomDomain = domains[Math.floor(Math.random() * domains.length)] || 'rizzcord.site';
+    const fullAddr = `${randomName}@${randomDomain}`;
 
     try {
       const res = await fetch('/api/inbox/create', {
@@ -192,7 +194,7 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        handleSelectAddress(fullAddr);
+        handleSelectAddress(data.address || fullAddr);
         fetchUserInboxes();
       } else {
         alert(data.error || 'Failed to create mailbox.');
@@ -210,7 +212,8 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
     }
     const cleanUser = customUsername.trim().toLowerCase().replace(/cyber[-_]?/gi, '');
     if (!cleanUser) return;
-    const fullAddr = `${cleanUser}@${currentDomain}`;
+    const randomDomain = domains[Math.floor(Math.random() * domains.length)] || 'rizzcord.site';
+    const fullAddr = cleanUser.includes('@') ? cleanUser : `${cleanUser}@${randomDomain}`;
 
     try {
       const res = await fetch('/api/inbox/create', {
@@ -220,7 +223,7 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
       });
       const data = await res.json();
       if (res.ok && data.success) {
-        handleSelectAddress(fullAddr);
+        handleSelectAddress(data.address || fullAddr);
         setCustomUsername('');
         setShowCustomDrawer(false);
         fetchUserInboxes();
@@ -342,22 +345,10 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
                   type="text"
                   value={customUsername}
                   onChange={(e) => setCustomUsername(e.target.value)}
-                  placeholder="e.g. phantom, vortex"
-                  className="bg-transparent text-xs font-mono text-white outline-none w-44 sm:w-56"
+                  placeholder="e.g. phantom, vortex or name@domain"
+                  className="bg-transparent text-xs font-mono text-white outline-none w-56 sm:w-72 placeholder-gray-500"
                   required
                 />
-                <span className="text-gray-500 text-xs font-mono">@</span>
-                <select
-                  value={currentDomain}
-                  onChange={(e) => setCurrentDomain(e.target.value)}
-                  className="bg-transparent text-xs font-mono text-cyan-300 outline-none cursor-pointer"
-                >
-                  {domains.map((d) => (
-                    <option key={d} value={d} className="bg-vault-900 text-white">
-                      {d}
-                    </option>
-                  ))}
-                </select>
               </div>
               <button type="submit" className="clay-btn px-3.5 py-1.5 text-xs font-mono text-emerald-400 font-bold hover:border-emerald-500/40">
                 Create Mailbox
@@ -516,29 +507,8 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
           </div>
         </div>
 
-        {/* Action Controls: Domain, Sync, Clear, Delete Mailbox */}
+        {/* Action Controls: Sync, Clear, Delete Mailbox */}
         <div className="flex items-center flex-wrap gap-2">
-          <div className="clay-inset px-2.5 py-1 flex items-center gap-1.5 text-xs font-mono">
-            <span className="text-gray-500">Domain:</span>
-            <select
-              value={currentDomain}
-              onChange={(e) => {
-                setCurrentDomain(e.target.value);
-                if (currentAddress) {
-                  const parts = currentAddress.split('@');
-                  handleSelectAddress(`${parts[0]}@${e.target.value}`);
-                }
-              }}
-              className="bg-transparent text-cyan-300 outline-none cursor-pointer"
-            >
-              {domains.map((d) => (
-                <option key={d} value={d} className="bg-vault-900 text-white">
-                  {d}
-                </option>
-              ))}
-            </select>
-          </div>
-
           <button
             onClick={() => currentAddress && fetchMessages(currentAddress)}
             disabled={!currentAddress}

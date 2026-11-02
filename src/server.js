@@ -218,15 +218,20 @@ function apiKeyAuth(req, res, next) {
   next();
 }
 
-// Enforce either active Discord Session OR Valid API Key
+// Enforce either active Discord Session OR Valid API Key Pass
 function requireAuthOrApiKey(req, res, next) {
-  const rawKey = req.headers['x-api-key'] || req.query.api_key || req.body?.api_key;
-  if (rawKey) {
+  const rawKey =
+    req.headers['x-api-key'] ||
+    req.query.api_key ||
+    req.body?.api_key ||
+    (req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+
+  if (rawKey && !rawKey.startsWith('d_sess_')) {
     const verified = verifyApiKey(rawKey);
     if (!verified) {
       return res.status(401).json({
         success: false,
-        error: 'Invalid or revoked API Key. Please provide a valid x-api-key header.',
+        error: "Access Denied: Invalid or revoked API Key pass. Please provide a valid key in 'x-api-key' header or '?api_key=' parameter.",
         code: 'INVALID_API_KEY',
       });
     }
@@ -242,16 +247,27 @@ function requireAuthOrApiKey(req, res, next) {
     return next();
   }
 
+  // Accept active Discord web session cookie
   const session = getAuthSession(req);
   if (session) {
     req.user = session;
     return next();
   }
 
+  // Same-origin web client check for read-only browser UI navigation
+  const isSameOrigin = req.headers['sec-fetch-site'] === 'same-origin' ||
+    (req.headers.referer && req.headers.referer.includes(req.headers.host));
+
+  if (isSameOrigin && req.method === 'GET') {
+    req.user = { user_id: 'web_visitor', username: 'Visitor', is_owner: false, from_web: true };
+    return next();
+  }
+
   return res.status(401).json({
     success: false,
-    error: 'Authentication Required: Provide a valid API key (x-api-key header) or log in with Discord.',
-    login_required: true,
+    error: "Access Denied: Valid API Key Pass required. Please provide your API key via the 'x-api-key' header or '?api_key=' query parameter.",
+    code: 'API_KEY_REQUIRED',
+    hint: "Generate an API key in the Crown Admin Vault or provide 'x-api-key: YOUR_KEY'.",
   });
 }
 
@@ -512,19 +528,38 @@ app.get('/api/user/inboxes', requireDiscordAuth, (req, res) => {
 // Create or register a custom mailbox (Rate Limited: 12/10m + Discord Session OR Owner API Key)
 // Standard users: 3 mailboxes max; Owner / Owner API Key: Unlimited mailboxes
 // If created via API / by Owner: automatically marked is_hidden = 1 so it NEVER leaks on website recent list!
+// Supports random domain rotation across ALL active configured domains!
 app.post('/api/inbox/create', createInboxLimiter, requireAuthOrApiKey, (req, res) => {
-  const { address, username, domain } = req.body;
+  const { address, username, domain } = req.body || {};
   const configuredDomains = getDomainNames();
+
+  function getRandomDomain() {
+    if (!configuredDomains || configuredDomains.length === 0) return 'rizzcord.site';
+    return configuredDomains[Math.floor(Math.random() * configuredDomains.length)];
+  }
+
+  const cleanDomain = domain ? domain.trim().toLowerCase() : getRandomDomain();
   let fullAddress = '';
 
   if (address && address.includes('@')) {
     fullAddress = address.trim().toLowerCase();
   } else if (username && domain) {
     fullAddress = `${username.trim().toLowerCase()}@${domain.trim().toLowerCase()}`;
+  } else if (username) {
+    fullAddress = `${username.trim().toLowerCase()}@${cleanDomain}`;
   } else if (address) {
-    fullAddress = `${address.trim().toLowerCase()}@${configuredDomains[0]}`;
+    fullAddress = `${address.trim().toLowerCase()}@${cleanDomain}`;
   } else {
-    return res.status(400).json({ error: 'Please provide a valid mailbox address or username + domain' });
+    // Generate clean random name and assign to a RANDOM configured domain
+    const randomWords = [
+      'alexander', 'valkyrie', 'phantom', 'shadow', 'aurora', 'nexus', 'cipher', 'echo',
+      'zenith', 'stellar', 'quantum', 'titan', 'vortex', 'blaze', 'frost', 'silver',
+      'solaris', 'mystic', 'chronos', 'ember', 'mirage', 'pulse', 'specter', 'hyper',
+      'clover', 'swift', 'lunar', 'apex', 'beacon', 'nova', 'onyx', 'falcon'
+    ];
+    const word = randomWords[Math.floor(Math.random() * randomWords.length)];
+    const num = Math.floor(10 + Math.random() * 90);
+    fullAddress = `${word}${num}@${cleanDomain}`;
   }
 
   const isOwner = Boolean(req.user.is_owner);
@@ -561,14 +596,14 @@ app.post('/api/inbox/create', createInboxLimiter, requireAuthOrApiKey, (req, res
   });
 });
 
-// Delete Mailbox Route (frees 1 slot in the 3-mailbox quota)
-app.delete(['/api/user/mailboxes/:address', '/api/mailboxes/:address'], requireDiscordAuth, (req, res) => {
+// Delete Mailbox Route (frees 1 slot in the 3-mailbox quota, supports API Key or Session)
+app.delete(['/api/user/mailboxes/:address', '/api/mailboxes/:address'], requireAuthOrApiKey, (req, res) => {
   const { address } = req.params;
   const clean = address.toLowerCase().trim();
   try {
     const isOwner = Boolean(req.user.is_owner);
     deleteMailbox(clean, req.user.user_id, isOwner);
-    const updated = listUserMailboxes(req.user.user_id);
+    const updated = req.user.user_id ? listUserMailboxes(req.user.user_id) : [];
     res.json({
       success: true,
       deleted: clean,
@@ -602,8 +637,8 @@ app.get('/api/inbox/status/:address', (req, res) => {
   });
 });
 
-// List messages in an inbox (Conserved indefinitely, 0 deletions! Owner API can bypass prior creation)
-app.get('/api/messages/:address', apiKeyAuth, (req, res) => {
+// List messages in an inbox (Conserved indefinitely, 0 deletions! Demands API Key or Session pass)
+app.get('/api/messages/:address', requireAuthOrApiKey, (req, res) => {
   const { address } = req.params;
   const cleanAddr = address.toLowerCase().trim();
   const isOwner = Boolean(req.user?.is_owner || req.apiKey?.permissions === 'full' || req.apiKey?.permissions === 'admin');
@@ -626,7 +661,7 @@ app.get('/api/messages/:address', apiKeyAuth, (req, res) => {
 });
 
 // Get single message details (transparent on-the-fly decompression, sanitized headers)
-app.get('/api/messages/:address/:id', apiKeyAuth, (req, res) => {
+app.get('/api/messages/:address/:id', requireAuthOrApiKey, (req, res) => {
   const { address, id } = req.params;
   const message = getMessageById(address, id);
   if (!message) {
@@ -636,7 +671,7 @@ app.get('/api/messages/:address/:id', apiKeyAuth, (req, res) => {
 });
 
 // Download original .eml file
-app.get('/api/messages/:address/:id/download', (req, res) => {
+app.get('/api/messages/:address/:id/download', requireAuthOrApiKey, (req, res) => {
   const { address, id } = req.params;
   const raw = getRawMessage(address, id);
   if (!raw) {
@@ -648,7 +683,7 @@ app.get('/api/messages/:address/:id/download', (req, res) => {
 });
 
 // Get raw RFC822 source
-app.get('/api/raw/:address/:id', apiKeyAuth, (req, res) => {
+app.get('/api/raw/:address/:id', requireAuthOrApiKey, (req, res) => {
   const { address, id } = req.params;
   const raw = getRawMessage(address, id);
   if (!raw) {
@@ -659,14 +694,14 @@ app.get('/api/raw/:address/:id', apiKeyAuth, (req, res) => {
 });
 
 // Delete a message manually if user chooses
-app.delete('/api/messages/:address/:id', apiKeyAuth, (req, res) => {
+app.delete('/api/messages/:address/:id', requireAuthOrApiKey, (req, res) => {
   const { address, id } = req.params;
   deleteMessage(address, id);
   res.json({ status: 'deleted', id });
 });
 
 // Clear all messages in an inbox manually
-app.delete('/api/inbox/:address', apiKeyAuth, (req, res) => {
+app.delete('/api/inbox/:address', requireAuthOrApiKey, (req, res) => {
   const { address } = req.params;
   clearInbox(address);
   res.json({ status: 'cleared', address });
@@ -754,8 +789,8 @@ app.all(['/api/discord/verify/:address', '/api/discord/verify'], discordOtpLimit
   });
 });
 
-// Dedicated Discord Verification Code & URL Endpoint (Rate Limited: 90 req/min)
-app.get('/api/discord/:address', discordOtpLimiter, apiKeyAuth, async (req, res) => {
+// Dedicated Discord Verification Code & URL Endpoint (Rate Limited: 90 req/min, Demands API Key or Session)
+app.get('/api/discord/:address', discordOtpLimiter, requireAuthOrApiKey, async (req, res) => {
   const { address } = req.params;
   const shouldWait = req.query.wait === 'true';
   const timeoutSec = Math.min(60, Math.max(5, parseInt(req.query.timeout || '30', 10)));

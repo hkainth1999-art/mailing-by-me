@@ -110,3 +110,4 @@ export const MultiDomainIcon: React.FC<IconProps> = ({ className = 'w-5 h-5', si
     <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" stroke="#c084fc" />
   </svg>
 );
+

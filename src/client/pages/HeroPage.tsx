@@ -236,3 +236,4 @@ export const HeroPage: React.FC<HeroPageProps> = ({ user, onGoToMailbox, onGoToD
     </div>
   );
 };
+
