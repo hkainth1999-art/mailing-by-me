@@ -88,21 +88,26 @@ echo -e "\n${GREEN}${BOLD}======================================================
 echo -e "${GREEN}${BOLD}  👑 CROWN MAIL VAULT DEPLOYED SUCCESSFULLY!${RESET}"
 echo -e "${GREEN}${BOLD}================================================================================${RESET}\n"
 
-# Read configured domains from .env if available
-WEB_URL="http://${SERVER_IP}:3000"
+# Read configured domains from .env or use defaults
+WEB_DOMAIN="tempmail.rizzcord.site"
+MAIL_FQDN="mail.rizzcord.site"
+
 if [ -f ".env" ]; then
-  WEB_DOMAIN=$(grep -E '^DOMAINS=' .env | cut -d '=' -f2 | cut -d ',' -f1 || echo "")
-  if [ -n "$WEB_DOMAIN" ]; then
-    WEB_URL="https://${WEB_DOMAIN} (or http://${SERVER_IP}:3000)"
+  EXTRACTED_DOMAIN=$(grep -E '^DISCORD_REDIRECT_URI=' .env | sed -e 's|^.*https\?://||' -e 's|/.*$||' || echo "")
+  if [ -n "$EXTRACTED_DOMAIN" ]; then
+    WEB_DOMAIN="$EXTRACTED_DOMAIN"
   fi
 fi
 
-echo -e "  🌐 ${BOLD}Web Dashboard:${RESET}        ${CYAN}${WEB_URL}${RESET}"
-echo -e "  📬 ${BOLD}Inbound Port 25 SMTP:${RESET} ${CYAN}Listening on 0.0.0.0:25 (Direct)${RESET}"
-echo -e "  ❄️ ${BOLD}Preservation Vault:${RESET}   ${PURPLE}Active (24h Cold Lossless Compression)${RESET}\n"
+WEB_URL="https://${WEB_DOMAIN}"
+
+echo -e "  🌐 ${BOLD}Web Dashboard (HTTPS):${RESET}  ${CYAN}${WEB_URL}${RESET}"
+echo -e "  📬 ${BOLD}Inbound Port 25 SMTP:${RESET}   ${CYAN}${MAIL_FQDN} (Listening on 0.0.0.0:25)${RESET}"
+echo -e "  ❄️ ${BOLD}Preservation Vault:${RESET}     ${PURPLE}Active (24h Cold Lossless Compression)${RESET}\n"
 
 echo -e "${BOLD}Helpful Management Commands:${RESET}"
 echo -e "  • Interactive CLI:   ${BOLD}./install.sh${RESET}"
 echo -e "  • View Live Logs:    ${BOLD}docker compose logs -f${RESET}"
 echo -e "  • Restart Services:  ${BOLD}docker compose restart${RESET}"
 echo -e "  • Stop Mail Server:  ${BOLD}docker compose down${RESET}\n"
+
