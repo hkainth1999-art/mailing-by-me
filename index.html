@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Crown Mail Vault — Inbound Port 25 Disposable Mail & Cold Vault</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👑</text></svg>">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            vault: {
+              950: '#06080e',
+              900: '#0a0d16',
+              800: '#0f1422',
+              700: '#151b2e',
+              cyan: '#00f0ff',
+              emerald: '#10b981',
+              purple: '#9333ea',
+              discord: '#5865f2',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+</head>
+<body class="min-h-screen flex flex-col font-sans selection:bg-cyan-500/30 selection:text-cyan-200 bg-[#06080e] text-gray-200">
+  <div id="root"></div>
+  <script type="module" src="/src/client/main.tsx"></script>
+</body>
+</html>

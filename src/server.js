@@ -39,10 +39,13 @@ import {
 } from './db.js';
 import { getDiscordAuthUrl, exchangeDiscordCode, fetchDiscordUser } from './discord.js';
 import { startSmtpServer, setBroadcastCallback } from './smtp.js';
+import { apiLimiter, createInboxLimiter, discordOtpLimiter } from './ratelimit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const distDir = path.resolve(__dirname, '../dist');
 const publicDir = path.resolve(__dirname, '../public');
+const staticDir = fs.existsSync(path.join(distDir, 'index.html')) ? distDir : publicDir;
 
 const app = express();
 
@@ -75,7 +78,15 @@ if (FORCE_HTTPS) {
   });
 }
 
-app.use(express.static(publicDir));
+// Static assets serving (Prioritizes Vite React TSX dist/ build, fallback to public/)
+app.use(express.static(staticDir));
+if (staticDir !== publicDir) {
+  app.use(express.static(publicDir));
+}
+
+// Global API Rate Limiting (120 req/min with Discord Owner bypass)
+app.use('/api', apiLimiter);
+app.use('/domains', apiLimiter);
 
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -319,20 +330,26 @@ app.get('/domains', (req, res) => {
   });
 });
 
-// API Documentation JSON Endpoint
-app.get(['/api/docs', '/docs'], (req, res) => {
+// API Documentation JSON Builder
+function getApiDocsPayload(req) {
   const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
   const host = req.headers['x-forwarded-host'] || req.headers.host;
   const baseUrl = `${protocol}://${host}`;
   const domains = getDomains();
 
-  res.json({
+  return {
     service: 'Crown Mail Vault API',
     version: '2.0.0',
     base_url: baseUrl,
     authentication: {
       type: 'Discord Session Cookie OR x-api-key header',
       discord_login_url: `${baseUrl}/api/auth/discord/login`,
+    },
+    rate_limits: {
+      general_api: '120 requests / minute',
+      create_mailbox: '12 mailboxes / 10 minutes',
+      discord_otp: '90 requests / minute',
+      vault_owner: 'Unlimited (Bypassed)',
     },
     quota: {
       standard_user: '3 active mailboxes max (delete a mailbox to free a slot)',
@@ -358,7 +375,7 @@ app.get(['/api/docs', '/docs'], (req, res) => {
       {
         path: '/api/inbox/create',
         method: 'POST',
-        description: 'Create a new mailbox (Standard users limit: 3 active mailboxes; Owner: unlimited).',
+        description: 'Create a new mailbox (Standard users limit: 3 active mailboxes; Owner: unlimited). Rate limited: 12/10min.',
         headers: { 'Content-Type': 'application/json' },
         body: { address: `test_${Date.now().toString().slice(-4)}@${domains[0]?.domain || 'rizzcord.site'}` },
         curl: `curl -X POST "${baseUrl}/api/inbox/create" -H "Content-Type: application/json" -d '{"address":"alexander@${domains[0]?.domain || 'rizzcord.site'}"}'`,
@@ -378,7 +395,7 @@ app.get(['/api/docs', '/docs'], (req, res) => {
       {
         path: '/api/discord/:address',
         method: 'GET',
-        description: 'Auto-extract Discord 6-digit verification code or click verify link.',
+        description: 'Auto-extract Discord 6-digit verification code or click verify link. Rate limited: 90/min.',
         curl: `curl -X GET "${baseUrl}/api/discord/alexander@${domains[0]?.domain || 'rizzcord.site'}"`,
       },
       {
@@ -404,7 +421,20 @@ app.get(['/api/docs', '/docs'], (req, res) => {
       url: `wss://${host}/ws?address=<your-address>`,
       description: 'Connect via WebSocket to receive instant real-time notifications for incoming emails.',
     },
-  });
+  };
+}
+
+// Dedicated JSON API Documentation endpoint
+app.get('/api/docs', (req, res) => {
+  res.json(getApiDocsPayload(req));
+});
+
+// Dedicated HTML SPA Docs Page (with JSON fallback for cURL)
+app.get('/docs', (req, res) => {
+  if (req.accepts('html') && !req.xhr && !req.headers['x-api-key']) {
+    return res.sendFile(path.join(staticDir, 'index.html'));
+  }
+  res.json(getApiDocsPayload(req));
 });
 
 // System Stats (Zero IP leaks)
@@ -435,8 +465,8 @@ app.get('/api/user/inboxes', requireDiscordAuth, (req, res) => {
   });
 });
 
-// Create or register a custom mailbox (Discord Login Required + 3 Mailbox Limit for Standard Users!)
-app.post('/api/inbox/create', requireDiscordAuth, (req, res) => {
+// Create or register a custom mailbox (Rate Limited: 12/10m + Discord Login Required + 3 Mailbox Limit for Standard Users!)
+app.post('/api/inbox/create', createInboxLimiter, requireDiscordAuth, (req, res) => {
   const { address, username, domain } = req.body;
   const configuredDomains = getDomainNames();
   let fullAddress = '';
@@ -587,8 +617,8 @@ app.delete('/api/inbox/:address', apiKeyAuth, (req, res) => {
   res.json({ status: 'cleared', address });
 });
 
-// Dedicated Discord Verification Code & URL Endpoint
-app.get('/api/discord/:address', apiKeyAuth, async (req, res) => {
+// Dedicated Discord Verification Code & URL Endpoint (Rate Limited: 90 req/min)
+app.get('/api/discord/:address', discordOtpLimiter, apiKeyAuth, async (req, res) => {
   const { address } = req.params;
   const shouldWait = req.query.wait === 'true';
   const timeoutSec = Math.min(60, Math.max(5, parseInt(req.query.timeout || '30', 10)));
@@ -780,9 +810,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// SPA fallback
+// SPA fallback (Serves Vite React TSX dist/index.html or public/index.html)
 app.get('*', (req, res) => {
-  res.sendFile(path.join(publicDir, 'index.html'));
+  res.sendFile(path.join(staticDir, 'index.html'));
 });
 
 // Periodic preservation check: runs every 30 minutes

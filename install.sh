@@ -281,6 +281,13 @@ EOF
   echo -e "   • Name:     ${CYAN}@${RESET}"
   echo -e "   • Content:  ${CYAN}v=spf1 mx ~all${RESET}\n"
 
+  echo -e "${CYAN}${BOLD}5. CONNECTING ADDITIONAL DOMAINS (e.g. siliconhost.info, otherdomain.com):${RESET}"
+  echo -e "   • ${YELLOW}${BOLD}QUESTION:${RESET} Do I have to make ${CYAN}mail.siliconhost.info${RESET}? -> ${GREEN}${BOLD}NO!${RESET}"
+  echo -e "   • Any connected domain points its MX directly to ${BOLD}${MAIL_FQDN}${RESET}:"
+  echo -e "     - ${BOLD}Type:${RESET} ${GREEN}MX${RESET} | ${BOLD}Name:${RESET} ${CYAN}@${RESET} | ${BOLD}Server:${RESET} ${CYAN}${MAIL_FQDN}${RESET} | ${BOLD}Priority:${RESET} ${BOLD}10${RESET}"
+  echo -e "     - ${BOLD}Type:${RESET} ${GREEN}TXT${RESET} | ${BOLD}Name:${RESET} ${CYAN}@${RESET} | ${BOLD}Content:${RESET} ${CYAN}v=spf1 mx ~all${RESET}"
+  echo -e "   • Then simply click ${BOLD}'Add Domain'${RESET} inside the Crown Admin Vault web page!\n"
+
   echo -e "${PURPLE}${BOLD}================================================================================${RESET}"
   echo -e "${PURPLE}${BOLD}  🔒 DISCORD DEVELOPER PORTAL SETUP${RESET}"
   echo -e "${PURPLE}${BOLD}================================================================================${RESET}\n"
