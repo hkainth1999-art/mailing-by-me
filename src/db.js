@@ -111,6 +111,8 @@ try {
   runMigration('ALTER TABLE mailboxes ADD COLUMN last_accessed_at INTEGER;');
   runMigration('ALTER TABLE mailboxes ADD COLUMN is_preserved INTEGER DEFAULT 0;');
   runMigration('ALTER TABLE mailboxes ADD COLUMN preserved_at INTEGER;');
+  runMigration('ALTER TABLE mailboxes ADD COLUMN is_hidden INTEGER DEFAULT 0;');
+  runMigration('ALTER TABLE mailboxes ADD COLUMN created_by_api INTEGER DEFAULT 0;');
   runMigration('ALTER TABLE messages ADD COLUMN is_compressed INTEGER DEFAULT 0;');
   runMigration('CREATE INDEX IF NOT EXISTS idx_mailboxes_discord ON mailboxes(discord_user_id);');
 
@@ -250,19 +252,19 @@ export function isDomainAllowed(domainName) {
 
 // --- Mailbox Operations ---
 
-export function saveMailbox(address, discordUserId = null, discordUsername = null) {
+export function saveMailbox(address, discordUserId = null, discordUsername = null, isHidden = false, createdByApi = false) {
   const cleanAddr = address.toLowerCase().trim();
   const now = Date.now();
 
   if (db) {
-    const existing = db.prepare('SELECT address, discord_user_id, discord_username, created_at, is_preserved, preserved_at FROM mailboxes WHERE address = ?').get(cleanAddr);
+    const existing = db.prepare('SELECT address, discord_user_id, discord_username, created_at, is_preserved, preserved_at, is_hidden, created_by_api FROM mailboxes WHERE address = ?').get(cleanAddr);
     if (!existing) {
       const stmt = db.prepare(`
-        INSERT INTO mailboxes (address, discord_user_id, discord_username, created_at, last_accessed_at, is_preserved, preserved_at)
-        VALUES (?, ?, ?, ?, ?, 0, NULL)
+        INSERT INTO mailboxes (address, discord_user_id, discord_username, created_at, last_accessed_at, is_preserved, preserved_at, is_hidden, created_by_api)
+        VALUES (?, ?, ?, ?, ?, 0, NULL, ?, ?)
       `);
-      stmt.run(cleanAddr, discordUserId, discordUsername, now, now);
-      return { address: cleanAddr, discord_user_id: discordUserId, discord_username: discordUsername, created_at: now, is_preserved: 0 };
+      stmt.run(cleanAddr, discordUserId, discordUsername, now, now, isHidden ? 1 : 0, createdByApi ? 1 : 0);
+      return { address: cleanAddr, discord_user_id: discordUserId, discord_username: discordUsername, created_at: now, is_preserved: 0, is_hidden: isHidden ? 1 : 0, created_by_api: createdByApi ? 1 : 0 };
     } else {
       // Update access and Discord user if linking
       if (discordUserId && !existing.discord_user_id) {
@@ -274,7 +276,7 @@ export function saveMailbox(address, discordUserId = null, discordUsername = nul
     }
   } else {
     if (!memoryStore.mailboxes.has(cleanAddr)) {
-      const mb = { address: cleanAddr, discord_user_id: discordUserId, discord_username: discordUsername, created_at: now, last_accessed_at: now, is_preserved: 0, preserved_at: null };
+      const mb = { address: cleanAddr, discord_user_id: discordUserId, discord_username: discordUsername, created_at: now, last_accessed_at: now, is_preserved: 0, preserved_at: null, is_hidden: isHidden ? 1 : 0, created_by_api: createdByApi ? 1 : 0 };
       memoryStore.mailboxes.set(cleanAddr, mb);
       return mb;
     }
@@ -303,14 +305,14 @@ export function listRecentMailboxes(limit = 15) {
              (SELECT COUNT(*) FROM messages msg WHERE msg.inbox_address = m.address) as count,
              (SELECT MAX(received_at) FROM messages msg WHERE msg.inbox_address = m.address) as last_active
       FROM mailboxes m
-      WHERE m.is_preserved = 0
+      WHERE m.is_preserved = 0 AND (m.is_hidden = 0 OR m.is_hidden IS NULL)
       ORDER BY COALESCE(last_active, m.created_at) DESC
       LIMIT ?
     `);
     return stmt.all(limit);
   }
   return Array.from(memoryStore.mailboxes.values())
-    .filter((m) => !m.is_preserved)
+    .filter((m) => !m.is_preserved && !m.is_hidden)
     .map((m) => {
       const count = memoryStore.messages.filter((msg) => msg.inbox_address === m.address).length;
       return { address: m.address, created_at: m.created_at, count, is_preserved: m.is_preserved };

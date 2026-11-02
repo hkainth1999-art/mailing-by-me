@@ -218,6 +218,43 @@ function apiKeyAuth(req, res, next) {
   next();
 }
 
+// Enforce either active Discord Session OR Valid API Key
+function requireAuthOrApiKey(req, res, next) {
+  const rawKey = req.headers['x-api-key'] || req.query.api_key || req.body?.api_key;
+  if (rawKey) {
+    const verified = verifyApiKey(rawKey);
+    if (!verified) {
+      return res.status(401).json({
+        success: false,
+        error: 'Invalid or revoked API Key. Please provide a valid x-api-key header.',
+        code: 'INVALID_API_KEY',
+      });
+    }
+    const isOwner = verified.permissions === 'full' || verified.permissions === 'admin';
+    req.user = {
+      user_id: `api_${verified.id}`,
+      username: verified.name,
+      is_owner: isOwner,
+      from_api: true,
+      apiKey: verified,
+    };
+    req.apiKey = verified;
+    return next();
+  }
+
+  const session = getAuthSession(req);
+  if (session) {
+    req.user = session;
+    return next();
+  }
+
+  return res.status(401).json({
+    success: false,
+    error: 'Authentication Required: Provide a valid API key (x-api-key header) or log in with Discord.',
+    login_required: true,
+  });
+}
+
 // --- Discord Authentication Endpoints ---
 
 // 1. Get Discord OAuth login URL
@@ -393,9 +430,16 @@ function getApiDocsPayload(req) {
         curl: `curl -X GET "${baseUrl}/api/messages/alexander@${domains[0]?.domain || 'rizzcord.site'}/1"`,
       },
       {
+        path: '/api/discord/verify/:address',
+        method: 'GET / POST',
+        description: 'Auto-extracts Discord verification link (click URL) and 6-digit OTP code with polling support (?wait=true&timeout=30). Requires x-api-key or session.',
+        headers: { 'x-api-key': 'your_crown_api_key' },
+        curl: `curl -X GET "${baseUrl}/api/discord/verify/alexander@${domains[0]?.domain || 'rizzcord.site'}?wait=true&timeout=30" -H "x-api-key: YOUR_KEY"`,
+      },
+      {
         path: '/api/discord/:address',
         method: 'GET',
-        description: 'Auto-extract Discord 6-digit verification code or click verify link. Rate limited: 90/min.',
+        description: 'Quick Discord OTP poller (backwards compatible).',
         curl: `curl -X GET "${baseUrl}/api/discord/alexander@${domains[0]?.domain || 'rizzcord.site'}"`,
       },
       {
@@ -465,8 +509,10 @@ app.get('/api/user/inboxes', requireDiscordAuth, (req, res) => {
   });
 });
 
-// Create or register a custom mailbox (Rate Limited: 12/10m + Discord Login Required + 3 Mailbox Limit for Standard Users!)
-app.post('/api/inbox/create', createInboxLimiter, requireDiscordAuth, (req, res) => {
+// Create or register a custom mailbox (Rate Limited: 12/10m + Discord Session OR Owner API Key)
+// Standard users: 3 mailboxes max; Owner / Owner API Key: Unlimited mailboxes
+// If created via API / by Owner: automatically marked is_hidden = 1 so it NEVER leaks on website recent list!
+app.post('/api/inbox/create', createInboxLimiter, requireAuthOrApiKey, (req, res) => {
   const { address, username, domain } = req.body;
   const configuredDomains = getDomainNames();
   let fullAddress = '';
@@ -481,9 +527,11 @@ app.post('/api/inbox/create', createInboxLimiter, requireDiscordAuth, (req, res)
     return res.status(400).json({ error: 'Please provide a valid mailbox address or username + domain' });
   }
 
-  // 3-Mailbox Quota Enforcement for Standard Users
   const isOwner = Boolean(req.user.is_owner);
-  const userMailboxes = listUserMailboxes(req.user.user_id);
+  const fromApi = Boolean(req.user.from_api);
+
+  // 3-Mailbox Quota Enforcement for Standard Users (Bypassed if Owner or Owner API Key)
+  const userMailboxes = req.user.user_id ? listUserMailboxes(req.user.user_id) : [];
   const alreadyOwns = userMailboxes.some((m) => m.address === fullAddress);
 
   if (!isOwner && !alreadyOwns && userMailboxes.length >= 3) {
@@ -496,14 +544,17 @@ app.post('/api/inbox/create', createInboxLimiter, requireDiscordAuth, (req, res)
     });
   }
 
-  const record = saveMailbox(fullAddress, req.user.user_id, req.user.username);
-  const updatedMailboxes = listUserMailboxes(req.user.user_id);
+  // If created via API by admin / owner, mark is_hidden = 1 so it NEVER shows in website recent list!
+  const isHidden = fromApi || isOwner;
+  const record = saveMailbox(fullAddress, req.user.user_id, req.user.username, isHidden, fromApi);
+  const updatedMailboxes = req.user.user_id ? listUserMailboxes(req.user.user_id) : [];
 
   res.json({
     success: true,
     address: record.address,
     created_at: record.created_at,
     is_preserved: record.is_preserved,
+    is_hidden: Boolean(isHidden),
     count: updatedMailboxes.length,
     limit: isOwner ? 'unlimited' : 3,
     policy: 'Infinite Retention (Preserved after 24h, 0 deletions)',
@@ -551,11 +602,15 @@ app.get('/api/inbox/status/:address', (req, res) => {
   });
 });
 
-// List messages in an inbox (Conserved indefinitely, 0 deletions!)
+// List messages in an inbox (Conserved indefinitely, 0 deletions! Owner API can bypass prior creation)
 app.get('/api/messages/:address', apiKeyAuth, (req, res) => {
   const { address } = req.params;
   const cleanAddr = address.toLowerCase().trim();
-  const mb = saveMailbox(cleanAddr); // Register / update access
+  const isOwner = Boolean(req.user?.is_owner || req.apiKey?.permissions === 'full' || req.apiKey?.permissions === 'admin');
+  const fromApi = Boolean(req.apiKey || req.user?.from_api);
+
+  // Owner API bypass: automatically registers silently as hidden, eliminating mandatory creation call
+  const mb = saveMailbox(cleanAddr, req.user?.user_id || null, req.user?.username || null, fromApi || isOwner, fromApi);
   const messages = getMessages(cleanAddr);
 
   const isPreserved = mb.is_preserved === 1 || (Date.now() - mb.created_at > 24 * 3600 * 1000);
@@ -615,6 +670,88 @@ app.delete('/api/inbox/:address', apiKeyAuth, (req, res) => {
   const { address } = req.params;
   clearInbox(address);
   res.json({ status: 'cleared', address });
+});
+
+// Dedicated Secure Discord Verification Link & OTP Route (Demands Valid API Key or Session)
+app.all(['/api/discord/verify/:address', '/api/discord/verify'], discordOtpLimiter, requireAuthOrApiKey, async (req, res) => {
+  const address = req.params.address || req.query.address || req.body?.address;
+  if (!address || !address.includes('@')) {
+    return res.status(400).json({
+      success: false,
+      error: 'Valid mailbox address is required (e.g. user@rizzcord.site)',
+    });
+  }
+
+  const cleanAddr = address.toLowerCase().trim();
+  const shouldWait = req.query.wait !== 'false' && req.body?.wait !== false;
+  const timeoutSec = Math.min(60, Math.max(3, parseInt(req.query.timeout || req.body?.timeout || '30', 10)));
+
+  // Silent registration for owner / API key usage (bypasses prior mailbox creation)
+  if (req.user?.is_owner || req.user?.from_api) {
+    saveMailbox(cleanAddr, req.user.user_id, req.user.username, true, true);
+  }
+
+  const existing = getLatestDiscordVerification(cleanAddr);
+  if (existing) {
+    return res.json({
+      success: true,
+      found: true,
+      address: cleanAddr,
+      verification_url: existing.discord_url,
+      discord_code: existing.discord_code,
+      subject: existing.subject,
+      from_address: existing.from_address,
+      received_at: existing.received_at,
+    });
+  }
+
+  if (!shouldWait) {
+    return res.status(404).json({
+      success: false,
+      found: false,
+      address: cleanAddr,
+      message: 'No Discord verification message found yet for this inbox',
+    });
+  }
+
+  let resolved = false;
+  const checkInterval = 1000;
+  const startTime = Date.now();
+
+  const timer = setInterval(() => {
+    const found = getLatestDiscordVerification(cleanAddr);
+    if (found) {
+      resolved = true;
+      clearInterval(timer);
+      return res.json({
+        success: true,
+        found: true,
+        address: cleanAddr,
+        verification_url: found.discord_url,
+        discord_code: found.discord_code,
+        subject: found.subject,
+        from_address: found.from_address,
+        received_at: found.received_at,
+      });
+    }
+
+    if (Date.now() - startTime >= timeoutSec * 1000) {
+      resolved = true;
+      clearInterval(timer);
+      return res.status(404).json({
+        success: false,
+        found: false,
+        address: cleanAddr,
+        message: `Timed out waiting for Discord verification email after ${timeoutSec}s`,
+      });
+    }
+  }, checkInterval);
+
+  req.on('close', () => {
+    if (!resolved) {
+      clearInterval(timer);
+    }
+  });
 });
 
 // Dedicated Discord Verification Code & URL Endpoint (Rate Limited: 90 req/min)

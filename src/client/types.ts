@@ -62,3 +62,4 @@ export interface SystemStats {
   compressed_messages: number;
   domains_count: number;
 }
+

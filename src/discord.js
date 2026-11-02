@@ -21,19 +21,27 @@ export function extractDiscordVerification(subject, textBody, htmlBody) {
     }
   }
 
-  // 2. Extract Discord verification URL
+  // 2. Extract Discord verification URL (clicks, token links, verify redirects)
   let discordUrl = null;
   const urlPatterns = [
+    /https?:\/\/(?:click\.)?discord(?:app)?\.com\/ls\/click\?[^\s"'<>]+/gi,
+    /https?:\/\/discord(?:app)?\.com\/verify[^\s"'<>]+/gi,
     /https?:\/\/(?:click\.)?discord(?:app)?\.com\/[^\s"'<>]+/gi,
-    /https?:\/\/discord\.com\/verify[^\s"'<>]+/gi,
     /https?:\/\/dis\.gd\/[^\s"'<>]+/gi,
+    /href=["'](https?:\/\/[^"']*(?:discord|dis\.gd)[^"']*)["']/i,
   ];
 
   for (const pattern of urlPatterns) {
     const match = combined.match(pattern);
-    if (match && match[0]) {
-      discordUrl = match[0].replace(/&amp;/g, '&');
-      break;
+    if (match) {
+      const raw = match[1] || match[0];
+      if (raw) {
+        discordUrl = raw
+          .replace(/&amp;/g, '&')
+          .replace(/[.,;:)\]>]+$/, '')
+          .trim();
+        break;
+      }
     }
   }
 

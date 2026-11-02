@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Terminal, Copy, Check, Zap, Shield, Info, ArrowRight, ExternalLink } from 'lucide-react';
+import { Terminal, Copy, Check, Zap, Shield, Info, ArrowRight, Code2 } from 'lucide-react';
 
 export const ApiDocsPage: React.FC = () => {
   const [baseUrl, setBaseUrl] = useState('');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [codeLang, setCodeLang] = useState<'python' | 'javascript' | 'curl'>('python');
 
   // Tester state
-  const [selectedEndpoint, setSelectedEndpoint] = useState('domains');
+  const [selectedEndpoint, setSelectedEndpoint] = useState('discord-verify');
   const [paramInput, setParamInput] = useState('demo@rizzcord.site');
   const [apiKeyInput, setApiKeyInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -46,6 +47,8 @@ export const ApiDocsPage: React.FC = () => {
       url = '/domains';
     } else if (selectedEndpoint === 'api-domains') {
       url = '/api/domains';
+    } else if (selectedEndpoint === 'discord-verify') {
+      url = `/api/discord/verify/${encodeURIComponent(cleanParam)}?wait=true&timeout=15`;
     } else if (selectedEndpoint === 'messages') {
       url = `/api/messages/${encodeURIComponent(cleanParam)}`;
     } else if (selectedEndpoint === 'discord') {
@@ -78,218 +81,340 @@ export const ApiDocsPage: React.FC = () => {
       const t1 = performance.now();
       setLatency(Math.round(t1 - t0));
       setStatusCode(500);
-      setStatusText('Network Error');
+      setStatusText('Network/CORS Error');
       setResponseJson(JSON.stringify({ error: err.message }, null, 2));
     } finally {
       setLoading(false);
     }
   };
 
-  const getCurlSnippet = (endpoint: string, param: string) => {
-    const host = baseUrl || 'https://tempmail.rizzcord.site';
-    const cleanParam = param || 'demo@rizzcord.site';
+  const pythonExample = `import requests
+import time
 
-    switch (endpoint) {
-      case 'domains':
-        return `curl -X GET "${host}/domains"`;
-      case 'api-domains':
-        return `curl -X GET "${host}/api/domains"`;
-      case 'messages':
-        return `curl -X GET "${host}/api/messages/${cleanParam}"`;
-      case 'discord':
-        return `curl -X GET "${host}/api/discord/${cleanParam}?wait=true&timeout=30"`;
-      case 'user-inboxes':
-        return `curl -X GET "${host}/api/user/inboxes"`;
-      case 'create-inbox':
-        return `curl -X POST "${host}/api/inbox/create" \\\n  -H "Content-Type: application/json" \\\n  -d '{"address": "${cleanParam}"}'`;
-      case 'delete-inbox':
-        return `curl -X DELETE "${host}/api/user/mailboxes/${cleanParam}"`;
-      case 'stats':
-        return `curl -X GET "${host}/api/stats"`;
-      default:
-        return `curl -X GET "${host}/domains"`;
-    }
+BASE_URL = "${baseUrl || 'https://tempmail.rizzcord.site'}"
+API_KEY = "YOUR_CROWN_API_KEY"  # Generated in Admin Vault
+
+headers = {
+    "x-api-key": API_KEY,
+    "Content-Type": "application/json"
+}
+
+# 1. Discover active domains
+domains_res = requests.get(f"{BASE_URL}/domains")
+domains = domains_res.json().get("domains", ["rizzcord.site"])
+target_domain = domains[0]
+
+# 2. Generate custom or random email address
+target_address = f"verify_{int(time.time())}@{target_domain}"
+print(f"[*] Target Email: {target_address}")
+
+# 3. Auto-Extract Discord Verification Link & OTP Code (Long-polling up to 30s)
+# Note: For Owner API keys, prior mailbox creation is bypassed automatically!
+print("[*] Waiting for incoming Discord verification email...")
+verify_res = requests.get(
+    f"{BASE_URL}/api/discord/verify/{target_address}",
+    params={"wait": "true", "timeout": 30},
+    headers=headers
+)
+
+if verify_res.status_code == 200:
+    data = verify_res.json()
+    print("✅ Discord Email Detected!")
+    print(f"🔗 Verification Link: {data.get('verification_url')}")
+    print(f"🔢 6-Digit OTP Code:  {data.get('discord_code')}")
+    print(f"📬 From Address:      {data.get('from_address')}")
+    
+    # Optional: Automatically click/verify link
+    if data.get("verification_url"):
+        click_res = requests.get(data["verification_url"], allow_redirects=True)
+        print(f"[+] Verified successfully (HTTP {click_res.status_code})")
+else:
+    print(f"[-] Verification timed out or failed: {verify_res.text}")
+`;
+
+  const jsExample = `// Crown Mail Vault API Client (Node.js 18+ or Browser)
+const BASE_URL = "${baseUrl || 'https://tempmail.rizzcord.site'}";
+const API_KEY = "YOUR_CROWN_API_KEY"; // Generated in Admin Vault
+
+async function runDiscordVerificationAutomation() {
+  const headers = {
+    'x-api-key': API_KEY,
+    'Content-Type': 'application/json'
   };
 
+  // 1. Get active domains
+  const domainRes = await fetch(\`\${BASE_URL}/domains\`);
+  const { domains } = await domainRes.json();
+  const domain = domains[0] || 'rizzcord.site';
+
+  const address = \`bot_\${Date.now()}@\${domain}\`;
+  console.log(\`[*] Using mailbox: \${address}\`);
+
+  // 2. Wait for Discord Verification Email with 1-click Link & 6-digit Code
+  console.log('[*] Polling for Discord email on Port 25...');
+  const verifyRes = await fetch(
+    \`\${BASE_URL}/api/discord/verify/\${encodeURIComponent(address)}?wait=true&timeout=30\`,
+    { headers }
+  );
+
+  if (verifyRes.ok) {
+    const data = await verifyRes.json();
+    console.log('✅ Discord Verification Found!');
+    console.log('🔗 Link:', data.verification_url);
+    console.log('🔢 Code:', data.discord_code);
+    return data;
+  } else {
+    console.error('[-] Timeout waiting for email:', await verifyRes.text());
+  }
+}
+
+runDiscordVerificationAutomation();
+`;
+
   return (
-    <div className="max-w-6xl mx-auto w-full px-4 sm:px-6 py-6 space-y-6">
-      {/* Title & Banner */}
-      <div className="clay-plate p-6 border border-cyan-500/20 relative overflow-hidden">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-center space-x-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-950 border border-cyan-400/30 flex items-center justify-center text-cyan-300 shadow-lg shadow-cyan-500/20">
-              <Terminal className="w-6 h-6" />
+    <div className="space-y-8 pb-12">
+      {/* Header Banner */}
+      <div className="clay-plate p-6 border border-white/5 space-y-2">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center border border-cyan-500/20">
+              <Terminal className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-xl font-mono font-bold text-white flex items-center gap-2">
-                Crown Mail REST API & Documentation
+              <h2 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                <span>Crown API Documentation & Interactive Runner</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold">
+                  v2.0
+                </span>
               </h2>
-              <p className="text-xs font-mono text-gray-400 mt-1">
-                Zero-rate-limit leaks • High-speed disposable email engine • Automatic Discord OTP detection
+              <p className="text-xs text-gray-400 font-mono">
+                Direct Inbound Port 25 Engine • Rate-Limited • Zero Credential Leaks
               </p>
             </div>
           </div>
 
-          {/* Base URL Box */}
-          <div className="clay-inset p-3 rounded-2xl flex items-center justify-between gap-3 border border-cyan-500/30 bg-cyan-950/20">
-            <div>
-              <div className="text-[10px] font-mono uppercase text-gray-400 font-bold">API Base URL:</div>
-              <div className="text-sm font-mono font-black text-cyan-300 select-all">{baseUrl}</div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono text-gray-400">Base URL:</span>
+            <div className="clay-inset px-3 py-1 text-xs font-mono text-cyan-300 flex items-center gap-2">
+              <span>{baseUrl}</span>
+              <button
+                onClick={() => copyToClipboard(baseUrl, 'base')}
+                className="text-gray-400 hover:text-white"
+              >
+                {copiedKey === 'base' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Rate Limits & Quotas Overview Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="clay-card p-5 border border-white/5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-gray-400 uppercase font-bold">General API Rate Limit</span>
+            <Zap className="w-4 h-4 text-cyan-400" />
+          </div>
+          <div className="text-2xl font-black text-cyan-300 font-mono">120 <span className="text-xs font-normal text-gray-400">req / min</span></div>
+          <p className="text-[11px] text-gray-400 font-mono">
+            Protects server from floods. Sliding window with automatic IP bucket reset.
+          </p>
+        </div>
+
+        <div className="clay-card p-5 border border-white/5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-gray-400 uppercase font-bold">Discord Verification API</span>
+            <Terminal className="w-4 h-4 text-purple-400" />
+          </div>
+          <div className="text-2xl font-black text-purple-300 font-mono">90 <span className="text-xs font-normal text-gray-400">req / min</span></div>
+          <p className="text-[11px] text-gray-400 font-mono">
+            Requires <code>x-api-key</code> or Discord session. Supports polling with <code>?wait=true</code>.
+          </p>
+        </div>
+
+        <div className="clay-card p-5 border border-white/5 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-mono text-gray-400 uppercase font-bold">Standard User Quota</span>
+            <Shield className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-2xl font-black text-emerald-300 font-mono">3 <span className="text-xs font-normal text-gray-400">mailboxes max</span></div>
+          <p className="text-[11px] text-gray-400 font-mono">
+            Delete an existing mailbox to create a new one. <span className="text-amber-300 font-bold">Owner API Key: Unlimited.</span>
+          </p>
+        </div>
+      </div>
+
+      {/* CODE EXAMPLES (Python & JavaScript) */}
+      <div className="clay-plate p-6 border border-white/5 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            <Code2 className="w-4 h-4 text-cyan-400" />
+            <h3 className="text-sm font-mono font-bold text-white uppercase tracking-wider">
+              Integration Code Examples (Python & JavaScript)
+            </h3>
+          </div>
+
+          <div className="flex items-center gap-1.5 clay-pill p-1 border border-white/5 bg-black/40">
             <button
-              onClick={() => copyToClipboard(baseUrl, 'base-url')}
-              className="clay-btn px-3 py-1.5 text-xs font-mono font-bold text-cyan-300 hover:text-white flex items-center gap-1.5"
+              onClick={() => setCodeLang('python')}
+              className={`px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors ${
+                codeLang === 'python' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-gray-400 hover:text-white'
+              }`}
             >
-              {copiedKey === 'base-url' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedKey === 'base-url' ? 'Copied' : 'Copy'}</span>
+              Python (requests)
+            </button>
+            <button
+              onClick={() => setCodeLang('javascript')}
+              className={`px-3 py-1 text-xs font-mono font-bold rounded-lg transition-colors ${
+                codeLang === 'javascript' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30' : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              JavaScript / Node.js
             </button>
           </div>
         </div>
-      </div>
 
-      {/* Policies & Limits Banner (Rate Limiting & 3-Mailbox Quota) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Rate Limiting Card */}
-        <div className="clay-plate p-5 border border-emerald-500/30 bg-emerald-950/10 space-y-2.5">
-          <div className="flex items-center gap-2 text-emerald-400 font-mono font-bold text-sm">
-            <Shield className="w-4 h-4" />
-            <span>Active Rate Limiting</span>
-          </div>
-          <p className="text-xs font-mono text-gray-300 leading-relaxed">
-            All endpoints are protected by IP-based sliding window rate limiters to ensure 100% server uptime:
-          </p>
-          <ul className="text-xs font-mono text-gray-400 space-y-1 list-disc list-inside">
-            <li><strong className="text-white">General API:</strong> 120 requests / minute</li>
-            <li><strong className="text-white">Mailbox Creation:</strong> 12 mailbox creations / 10 minutes</li>
-            <li><strong className="text-white">Discord OTP Polling:</strong> 90 requests / minute</li>
-            <li><strong className="text-white">Exceeded Response:</strong> Returns <code className="text-amber-300 font-bold">HTTP 429 Too Many Requests</code> with <code className="text-cyan-300">Retry-After</code> header.</li>
-          </ul>
-        </div>
-
-        {/* 3-Mailbox Quota Card */}
-        <div className="clay-plate p-5 border border-purple-500/30 bg-purple-950/10 space-y-2.5">
-          <div className="flex items-center gap-2 text-purple-400 font-mono font-bold text-sm">
-            <Info className="w-4 h-4" />
-            <span>3-Mailbox Quota Policy</span>
-          </div>
-          <p className="text-xs font-mono text-gray-300 leading-relaxed">
-            To prevent bot spam, standard Discord users can hold up to <strong className="text-cyan-300">3 active mailboxes</strong> simultaneously.
-          </p>
-          <ul className="text-xs font-mono text-gray-400 space-y-1 list-disc list-inside">
-            <li>When at 3/3 active mailboxes, creation returns <code className="text-rose-400">HTTP 403 QUOTA_REACHED</code>.</li>
-            <li>Delete an old mailbox via <code className="text-cyan-300">DELETE /api/user/mailboxes/:address</code> to immediately free up a creation slot!</li>
-            <li>Vault Owners (<code className="text-amber-300">OWNER_IDS</code>) have unlimited mailboxes.</li>
-          </ul>
+        <div className="relative">
+          <pre className="clay-inset p-4 rounded-xl text-xs font-mono text-gray-300 overflow-x-auto max-h-[380px] leading-relaxed">
+            <code>{codeLang === 'python' ? pythonExample : jsExample}</code>
+          </pre>
+          <button
+            onClick={() => copyToClipboard(codeLang === 'python' ? pythonExample : jsExample, 'code-sample')}
+            className="absolute top-3 right-3 clay-btn px-2.5 py-1 text-xs font-mono text-cyan-300 flex items-center gap-1 bg-black/80"
+          >
+            {copiedKey === 'code-sample' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            <span>Copy Code</span>
+          </button>
         </div>
       </div>
 
-      {/* Interactive API Tester Deck */}
-      <div className="clay-plate p-6 border border-cyan-500/30 space-y-4">
-        <div className="flex items-center justify-between border-b border-white/5 pb-3">
+      {/* INTERACTIVE REQUEST RUNNER */}
+      <div className="clay-plate p-6 border border-cyan-500/30 space-y-5">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
-            <Zap className="w-5 h-5 text-cyan-400" />
+            <Zap className="w-4 h-4 text-cyan-400" />
             <h3 className="text-sm font-mono font-bold text-white uppercase tracking-wider">
-              Interactive API Runner & Request Tester
+              Live Interactive Request Runner
             </h3>
           </div>
-          <span className="text-[11px] font-mono text-gray-400">Live Server Communication</span>
+          <div className="flex items-center gap-3 text-xs font-mono">
+            {statusCode && (
+              <span className={`px-2 py-0.5 rounded font-bold ${
+                statusCode >= 200 && statusCode < 300 ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+              }`}>
+                {statusText}
+              </span>
+            )}
+            {latency !== null && (
+              <span className="text-gray-400">{latency} ms</span>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div>
-            <label className="block text-[11px] font-mono text-gray-400 mb-1">Target Endpoint:</label>
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 items-end">
+          <div className="lg:col-span-4 space-y-1">
+            <label className="text-[11px] font-mono text-gray-400">Endpoint Action</label>
             <select
               value={selectedEndpoint}
               onChange={(e) => setSelectedEndpoint(e.target.value)}
-              className="w-full clay-inset px-3 py-2 text-xs font-mono text-cyan-300 outline-none cursor-pointer"
+              className="w-full bg-[#080b12] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-cyan-400"
             >
-              <option value="domains">GET /domains (Accepted Domains)</option>
-              <option value="api-domains">GET /api/domains (API Domain List)</option>
+              <option value="discord-verify">GET /api/discord/verify/:address (Auto-Extract Link & OTP)</option>
+              <option value="domains">GET /domains (Active Domains)</option>
+              <option value="api-domains">GET /api/domains (Domains API)</option>
               <option value="messages">GET /api/messages/:address (Inbox Messages)</option>
-              <option value="discord">GET /api/discord/:address (Discord OTP Extractor)</option>
+              <option value="discord">GET /api/discord/:address (Quick OTP)</option>
               <option value="create-inbox">POST /api/inbox/create (Create Mailbox)</option>
-              <option value="delete-inbox">DELETE /api/user/mailboxes/:address (Free Quota Slot)</option>
-              <option value="user-inboxes">GET /api/user/inboxes (User Inboxes & Quota)</option>
-              <option value="stats">GET /api/stats (Vault Metrics)</option>
+              <option value="user-inboxes">GET /api/user/inboxes (Your Mailboxes & Quota)</option>
+              <option value="delete-inbox">DELETE /api/user/mailboxes/:address (Free Slot)</option>
+              <option value="stats">GET /api/stats (Zero IP leak system stats)</option>
             </select>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-mono text-gray-400 mb-1">Address / Parameter:</label>
+          <div className="lg:col-span-4 space-y-1">
+            <label className="text-[11px] font-mono text-gray-400">Parameter (Address / Value)</label>
             <input
               type="text"
               value={paramInput}
               onChange={(e) => setParamInput(e.target.value)}
               placeholder="e.g. alexander@rizzcord.site"
-              className="w-full clay-inset px-3 py-2 text-xs font-mono text-white outline-none"
+              className="w-full bg-[#080b12] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-cyan-400"
             />
           </div>
 
-          <div>
-            <label className="block text-[11px] font-mono text-gray-400 mb-1">API Key Header (optional):</label>
+          <div className="lg:col-span-2 space-y-1">
+            <label className="text-[11px] font-mono text-gray-400">API Key (Optional)</label>
             <input
-              type="text"
+              type="password"
               value={apiKeyInput}
               onChange={(e) => setApiKeyInput(e.target.value)}
-              placeholder="crwn_... (for protected routes)"
-              className="w-full clay-inset px-3 py-2 text-xs font-mono text-white outline-none"
+              placeholder="x-api-key..."
+              className="w-full bg-[#080b12] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-cyan-400"
             />
           </div>
-        </div>
 
-        {/* Buttons */}
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleRunRequest}
-            disabled={loading}
-            className="clay-btn-primary px-5 py-2.5 text-xs font-mono font-bold flex items-center gap-2"
-          >
-            <Zap className="w-4 h-4 text-black" />
-            <span>{loading ? 'SENDING...' : 'SEND REQUEST'}</span>
-          </button>
-
-          <button
-            onClick={() => copyToClipboard(getCurlSnippet(selectedEndpoint, paramInput), 'tester-curl')}
-            className="clay-btn px-4 py-2.5 text-xs font-mono text-gray-300 hover:text-white flex items-center gap-1.5"
-          >
-            {copiedKey === 'tester-curl' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            <span>{copiedKey === 'tester-curl' ? 'Copied cURL!' : 'Copy cURL'}</span>
-          </button>
-        </div>
-
-        {/* Response Viewer */}
-        <div className="space-y-1.5 pt-2">
-          <div className="flex items-center justify-between text-[11px] font-mono text-gray-400">
-            <span>Response Payload:</span>
-            <div className="flex items-center gap-2">
-              <span
-                className={`px-2 py-0.5 rounded font-bold ${
-                  statusCode && statusCode < 300
-                    ? 'bg-emerald-500/20 text-emerald-400'
-                    : statusCode && statusCode >= 400
-                    ? 'bg-rose-500/20 text-rose-400'
-                    : 'bg-gray-800 text-gray-300'
-                }`}
-              >
-                {statusText}
-              </span>
-              {latency !== null && <span className="text-cyan-400">{latency}ms</span>}
-            </div>
+          <div className="lg:col-span-2">
+            <button
+              onClick={handleRunRequest}
+              disabled={loading}
+              className="clay-btn-primary w-full py-2 px-4 text-xs font-mono font-bold text-black flex items-center justify-center gap-2"
+            >
+              <span>{loading ? 'RUNNING...' : 'SEND REQUEST'}</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
           </div>
-          <pre className="clay-inset p-4 text-xs font-mono text-gray-300 max-h-72 overflow-auto whitespace-pre-wrap select-all">
-            {responseJson}
+        </div>
+
+        {/* Live Response Viewer */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[11px] font-mono text-gray-400">
+            <span>JSON Output</span>
+            <button
+              onClick={() => copyToClipboard(responseJson, 'json-out')}
+              className="hover:text-cyan-300 flex items-center gap-1"
+            >
+              {copiedKey === 'json-out' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+              <span>Copy Response</span>
+            </button>
+          </div>
+          <pre className="clay-inset p-4 rounded-xl text-xs font-mono text-cyan-300 overflow-x-auto max-h-[300px]">
+            <code>{responseJson}</code>
           </pre>
         </div>
       </div>
 
-      {/* Complete Endpoint Documentation Catalog */}
+      {/* DETAILED ENDPOINTS CARDS */}
       <div className="space-y-4">
-        <h3 className="text-base font-mono font-bold text-white flex items-center gap-2">
-          <span>📚</span>
-          <span>Complete Endpoint Reference</span>
+        <h3 className="text-sm font-mono font-bold text-gray-300 uppercase tracking-wider">
+          Complete Endpoint Directory
         </h3>
 
-        {/* 1. GET /domains */}
+        {/* 1. GET /api/discord/verify/:address */}
+        <div className="clay-plate p-5 border border-purple-500/30 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                GET / POST
+              </span>
+              <code className="text-sm font-mono font-bold text-white">/api/discord/verify/:address</code>
+            </div>
+            <span className="text-[11px] font-mono text-cyan-400 font-bold">Secure • Demands API Key or Session</span>
+          </div>
+          <p className="text-xs font-mono text-gray-300">
+            Automatically extracts the Discord 1-click verification link (<code className="text-cyan-300">https://click.discord.com/...</code>) and 6-digit verification code. Uses long-polling (<code className="text-purple-300">?wait=true&timeout=30</code>) to hold the connection until the email arrives on Port 25.
+          </p>
+          <div className="clay-inset p-3 text-xs font-mono text-cyan-300 flex items-center justify-between gap-2 overflow-x-auto">
+            <span>curl -X GET "{baseUrl}/api/discord/verify/alexander@rizzcord.site?wait=true&timeout=30" -H "x-api-key: YOUR_KEY"</span>
+            <button
+              onClick={() => copyToClipboard(`curl -X GET "${baseUrl}/api/discord/verify/alexander@rizzcord.site?wait=true&timeout=30" -H "x-api-key: YOUR_KEY"`, 'curl-verify')}
+              className="text-gray-400 hover:text-white shrink-0"
+            >
+              {copiedKey === 'curl-verify' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* 2. GET /domains */}
         <div className="clay-plate p-5 border border-white/5 space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -316,7 +441,7 @@ export const ApiDocsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 2. POST /api/inbox/create */}
+        {/* 3. POST /api/inbox/create */}
         <div className="clay-plate p-5 border border-white/5 space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -325,15 +450,15 @@ export const ApiDocsPage: React.FC = () => {
               </span>
               <code className="text-sm font-mono font-bold text-white">/api/inbox/create</code>
             </div>
-            <span className="text-[11px] font-mono text-purple-400">Discord Session Cookie / Auth</span>
+            <span className="text-[11px] font-mono text-purple-400">Discord Session OR x-api-key</span>
           </div>
           <p className="text-xs font-mono text-gray-300">
-            Registers a new custom or random mailbox. Enforces the 3-mailbox quota for standard users (Owner is unlimited).
+            Registers a new mailbox. Standard users have a 3-mailbox quota limit. Owner API key has <strong className="text-amber-300">unlimited</strong> mailboxes, and API-created mailboxes are automatically hidden from website recent lists!
           </p>
           <div className="clay-inset p-3 text-xs font-mono text-cyan-300 flex items-center justify-between gap-2 overflow-x-auto">
-            <span>curl -X POST "{baseUrl}/api/inbox/create" -H "Content-Type: application/json" -d '&#123;"address":"alexander@rizzcord.site"&#125;'</span>
+            <span>curl -X POST "{baseUrl}/api/inbox/create" -H "x-api-key: YOUR_KEY" -H "Content-Type: application/json" -d '&#123;"address":"alexander@rizzcord.site"&#125;'</span>
             <button
-              onClick={() => copyToClipboard(`curl -X POST "${baseUrl}/api/inbox/create" -H "Content-Type: application/json" -d '{"address":"alexander@rizzcord.site"}'`, 'curl-create')}
+              onClick={() => copyToClipboard(`curl -X POST "${baseUrl}/api/inbox/create" -H "x-api-key: YOUR_KEY" -H "Content-Type: application/json" -d '{"address":"alexander@rizzcord.site"}'`, 'curl-create')}
               className="text-gray-400 hover:text-white shrink-0"
             >
               {copiedKey === 'curl-create' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -341,7 +466,7 @@ export const ApiDocsPage: React.FC = () => {
           </div>
         </div>
 
-        {/* 3. GET /api/messages/:address */}
+        {/* 4. GET /api/messages/:address */}
         <div className="clay-plate p-5 border border-white/5 space-y-3">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -353,7 +478,7 @@ export const ApiDocsPage: React.FC = () => {
             <span className="text-[11px] font-mono text-gray-400">Public or API Key</span>
           </div>
           <p className="text-xs font-mono text-gray-300">
-            Fetches all messages in an inbox. Automatically decompresses preserved messages if older than 24 hours.
+            Fetches all messages in an inbox. Automatically decompresses preserved messages if older than 24 hours. Owner API key can query directly without prior mailbox creation!
           </p>
           <div className="clay-inset p-3 text-xs font-mono text-cyan-300 flex items-center justify-between gap-2 overflow-x-auto">
             <span>curl -X GET "{baseUrl}/api/messages/alexander@rizzcord.site"</span>
@@ -362,31 +487,6 @@ export const ApiDocsPage: React.FC = () => {
               className="text-gray-400 hover:text-white shrink-0"
             >
               {copiedKey === 'curl-msgs' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
-          </div>
-        </div>
-
-        {/* 4. GET /api/discord/:address */}
-        <div className="clay-plate p-5 border border-white/5 space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-purple-500/20 text-purple-400 border border-purple-500/30">
-                GET
-              </span>
-              <code className="text-sm font-mono font-bold text-white">/api/discord/:address?wait=true&timeout=30</code>
-            </div>
-            <span className="text-[11px] font-mono text-cyan-400 font-bold">Automated Discord Verification</span>
-          </div>
-          <p className="text-xs font-mono text-gray-300">
-            Automatically extracts 6-digit Discord verification code or click verify link. Use <code>?wait=true</code> for long-polling.
-          </p>
-          <div className="clay-inset p-3 text-xs font-mono text-cyan-300 flex items-center justify-between gap-2 overflow-x-auto">
-            <span>curl -X GET "{baseUrl}/api/discord/alexander@rizzcord.site?wait=true"</span>
-            <button
-              onClick={() => copyToClipboard(`curl -X GET "${baseUrl}/api/discord/alexander@rizzcord.site?wait=true"`, 'curl-discord')}
-              className="text-gray-400 hover:text-white shrink-0"
-            >
-              {copiedKey === 'curl-discord' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
           </div>
         </div>
@@ -403,7 +503,7 @@ export const ApiDocsPage: React.FC = () => {
             <span className="text-[11px] font-mono text-rose-400 font-bold">Frees 1 Quota Slot</span>
           </div>
           <p className="text-xs font-mono text-gray-300">
-            Permanently deletes the mailbox and its emails, immediately reducing your active count and allowing you to create another mailbox.
+            Permanently deletes the mailbox and its emails, immediately freeing 1 slot in your 3-mailbox quota.
           </p>
           <div className="clay-inset p-3 text-xs font-mono text-cyan-300 flex items-center justify-between gap-2 overflow-x-auto">
             <span>curl -X DELETE "{baseUrl}/api/user/mailboxes/alexander@rizzcord.site"</span>
@@ -413,25 +513,6 @@ export const ApiDocsPage: React.FC = () => {
             >
               {copiedKey === 'curl-del' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
             </button>
-          </div>
-        </div>
-
-        {/* 6. WebSocket Live Inbound Feed */}
-        <div className="clay-plate p-5 border border-white/5 space-y-3">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                WSS
-              </span>
-              <code className="text-sm font-mono font-bold text-white">/ws?address=:address</code>
-            </div>
-            <span className="text-[11px] font-mono text-emerald-400 font-bold">Realtime WebSocket</span>
-          </div>
-          <p className="text-xs font-mono text-gray-300">
-            Connect via WebSocket to receive instant real-time JSON pushes whenever an email arrives on Port 25 for that address.
-          </p>
-          <div className="clay-inset p-3 text-xs font-mono text-emerald-300 overflow-x-auto">
-            wss://{baseUrl.replace(/^https?:\/\//, '')}/ws?address=alexander@rizzcord.site
           </div>
         </div>
       </div>

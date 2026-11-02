@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Navbar } from './components/Navbar';
+import { HeroPage } from './pages/HeroPage';
 import { MailboxPage } from './pages/MailboxPage';
 import { ApiDocsPage } from './pages/ApiDocsPage';
 import { AdminPage } from './pages/AdminPage';
@@ -65,11 +66,15 @@ export const App: React.FC = () => {
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Determine current page key
-  let currentPage = 'mailbox';
+  let currentPage = 'home';
   if (currentPath === '/docs' || currentPath.startsWith('/docs') || currentPath === '/api-tester') {
     currentPage = 'docs';
   } else if (currentPath === '/admin' || currentPath.startsWith('/admin')) {
     currentPage = 'admin';
+  } else if (currentPath === '/inbox' || currentPath.startsWith('/inbox/')) {
+    currentPage = 'mailbox';
+  } else if (currentPath === '/') {
+    currentPage = activeAddress ? 'mailbox' : 'home';
   }
 
   // Fetch current user
@@ -95,6 +100,8 @@ export const App: React.FC = () => {
       setCurrentPath(window.location.pathname);
       if (window.location.pathname.startsWith('/inbox/')) {
         setActiveAddress(decodeURIComponent(window.location.pathname.replace('/inbox/', '')));
+      } else if (window.location.pathname === '/') {
+        setActiveAddress('');
       }
     };
     window.addEventListener('popstate', handlePopState);
@@ -105,12 +112,15 @@ export const App: React.FC = () => {
   const handleNavigate = (path: string) => {
     window.history.pushState({}, '', path);
     setCurrentPath(path);
+    if (path === '/') {
+      setActiveAddress('');
+    }
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleAddressChange = (addr: string) => {
     setActiveAddress(addr);
-    const newPath = addr ? `/inbox/${encodeURIComponent(addr)}` : '/';
+    const newPath = addr ? `/inbox/${encodeURIComponent(addr)}` : '/inbox';
     if (window.location.pathname !== newPath) {
       window.history.pushState({}, '', newPath);
       setCurrentPath(newPath);
@@ -153,7 +163,7 @@ export const App: React.FC = () => {
       ws.onmessage = (event) => {
         try {
           const payload = JSON.parse(event.data);
-          if (payload.type === 'new_email') {
+          if (payload.type === 'new_email' || payload.type === 'new_message') {
             if (soundEnabled) {
               playChimeSound();
             }
@@ -195,6 +205,20 @@ export const App: React.FC = () => {
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col">
+        {currentPage === 'home' && (
+          <HeroPage
+            user={user}
+            onGoToMailbox={(addr) => {
+              if (addr) {
+                handleAddressChange(addr);
+              } else {
+                handleNavigate('/inbox');
+              }
+            }}
+            onGoToDocs={() => handleNavigate('/docs')}
+          />
+        )}
+
         {currentPage === 'mailbox' && (
           <MailboxPage
             user={user}
@@ -226,7 +250,7 @@ export const App: React.FC = () => {
                   onClick={() => handleNavigate('/')}
                   className="clay-btn px-4 py-2 text-xs text-gray-300"
                 >
-                  Return to Mailbox
+                  Return to Home
                 </button>
                 <a
                   href="/api/auth/discord/login"
