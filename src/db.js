@@ -114,7 +114,19 @@ try {
   runMigration('ALTER TABLE mailboxes ADD COLUMN is_hidden INTEGER DEFAULT 0;');
   runMigration('ALTER TABLE mailboxes ADD COLUMN created_by_api INTEGER DEFAULT 0;');
   runMigration('ALTER TABLE messages ADD COLUMN is_compressed INTEGER DEFAULT 0;');
+  runMigration('ALTER TABLE api_keys ADD COLUMN raw_key TEXT;');
   runMigration('CREATE INDEX IF NOT EXISTS idx_mailboxes_discord ON mailboxes(discord_user_id);');
+
+  // Auto-populate raw_key for any legacy API keys so owners can copy them immediately
+  try {
+    const unpopulated = db.prepare('SELECT id FROM api_keys WHERE raw_key IS NULL OR raw_key = ""').all();
+    for (const row of unpopulated) {
+      const newRawKey = `crwn_${crypto.randomBytes(24).toString('hex')}`;
+      const newHash = crypto.createHash('sha256').update(newRawKey).digest('hex');
+      const newPrefix = newRawKey.substring(0, 15) + '...';
+      db.prepare('UPDATE api_keys SET raw_key = ?, key_hash = ?, prefix = ? WHERE id = ?').run(newRawKey, newHash, newPrefix, row.id);
+    }
+  } catch {}
 
   // Seed initial domains from config if domains table is empty
   const count = db.prepare('SELECT COUNT(*) as count FROM domains').get()?.count || 0;
@@ -706,21 +718,21 @@ export function createApiKey({ name = 'Default Key', permissions = 'full' }) {
 
   if (db) {
     const stmt = db.prepare(`
-      INSERT INTO api_keys (id, key_hash, prefix, name, permissions, created_at, last_used_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO api_keys (id, key_hash, prefix, name, permissions, created_at, last_used_at, raw_key)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(id, key_hash, prefix, name, permissions, now, null);
+    stmt.run(id, key_hash, prefix, name, permissions, now, null, rawKey);
   } else {
-    memoryStore.apiKeys.set(id, { id, key_hash, prefix, name, permissions, created_at: now, last_used_at: null });
+    memoryStore.apiKeys.set(id, { id, key_hash, prefix, name, permissions, created_at: now, last_used_at: null, raw_key: rawKey });
   }
 
-  return { id, key: rawKey, prefix, name, permissions, created_at: now };
+  return { id, key: rawKey, raw_key: rawKey, prefix, name, permissions, created_at: now };
 }
 
 export function listApiKeys() {
   if (db) {
     const stmt = db.prepare(`
-      SELECT id, prefix, name, permissions, created_at, last_used_at
+      SELECT id, prefix, name, permissions, created_at, last_used_at, raw_key
       FROM api_keys
       ORDER BY created_at DESC
     `);

@@ -132,7 +132,8 @@ export const AdminPage: React.FC = () => {
       });
       const data = await res.json();
       if (data.success) {
-        setGeneratedKey(data.apiKey);
+        const keyVal = data.key || data.raw_key || data.apiKey || data.item?.key;
+        setGeneratedKey(keyVal);
         setNewKeyLabel('');
         await fetchKeys();
       } else {
@@ -535,20 +536,63 @@ export const AdminPage: React.FC = () => {
             <h4 className="text-xs font-mono font-bold text-gray-300 uppercase tracking-wider">
               Active API Keys ({apiKeys.length})
             </h4>
-            {apiKeys.map((k) => (
-              <div key={k.id} className="clay-plate p-3.5 border border-white/5 flex items-center justify-between text-xs font-mono">
-                <div>
-                  <div className="text-white font-bold">{k.name}</div>
-                  <div className="text-[10px] text-gray-500">Key Prefix: {k.key_prefix}... • Created: {new Date(k.created_at).toLocaleDateString()}</div>
+            {apiKeys.map((k) => {
+              const fullKey = k.raw_key || k.key;
+              const displayPrefix = fullKey
+                ? `${fullKey.slice(0, 14)}...${fullKey.slice(-4)}`
+                : (k.prefix || 'crwn_...');
+              const isCopied = copiedKey === `key-${k.id}`;
+
+              return (
+                <div key={k.id} className="clay-plate p-4 border border-white/5 flex items-center justify-between flex-wrap gap-3 text-xs font-mono">
+                  <div className="space-y-1">
+                    <div className="text-white font-bold flex items-center gap-2">
+                      <span>{k.name}</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/20 font-bold uppercase">
+                        {k.permissions || 'full'}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-gray-400 flex items-center gap-2 flex-wrap">
+                      <span>Key:</span>
+                      <code className="text-cyan-300 bg-black/50 px-2 py-0.5 rounded border border-white/5 select-all">
+                        {displayPrefix}
+                      </code>
+                      <span className="text-gray-600">•</span>
+                      <span>Created: {new Date(k.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => copyToClipboard(fullKey || displayPrefix, `key-${k.id}`)}
+                      className={`clay-btn px-3 py-1.5 text-xs font-mono font-bold flex items-center gap-1.5 transition-all ${
+                        isCopied ? 'border-emerald-500/50 text-emerald-400 bg-emerald-500/10' : 'text-cyan-300 hover:text-white'
+                      }`}
+                      title="Copy full API Key to clipboard"
+                    >
+                      {isCopied ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Copy API Key</span>
+                        </>
+                      )}
+                    </button>
+
+                    <button
+                      onClick={() => handleRevokeKey(k.id)}
+                      className="clay-btn px-2.5 py-1.5 text-rose-400 hover:text-rose-300 text-xs hover:border-rose-500/30"
+                    >
+                      Revoke
+                    </button>
+                  </div>
                 </div>
-                <button
-                  onClick={() => handleRevokeKey(k.id)}
-                  className="clay-btn px-2.5 py-1 text-rose-400 hover:text-rose-300 text-[11px]"
-                >
-                  Revoke
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

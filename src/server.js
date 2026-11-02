@@ -933,8 +933,11 @@ app.post('/api/admin/keys', requireOwner, (req, res) => {
   });
   res.json({
     success: true,
-    key: newKey,
-    message: 'Store this API Key securely. It cannot be retrieved again.',
+    key: newKey.key,
+    raw_key: newKey.raw_key,
+    apiKey: newKey.key,
+    item: newKey,
+    message: 'API Key generated successfully.',
   });
 });
 
