@@ -18,7 +18,7 @@ RUN npm prune --production
 # Ensure data directory exists
 RUN mkdir -p /app/data
 
-EXPOSE 3000 25
+EXPOSE 3000 25 587
 
 ENV NODE_ENV=production
 ENV PORT=3000

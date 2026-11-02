@@ -101,9 +101,10 @@ fi
 
 WEB_URL="https://${WEB_DOMAIN}"
 
-echo -e "  🌐 ${BOLD}Web Dashboard (HTTPS):${RESET}  ${CYAN}${WEB_URL}${RESET}"
-echo -e "  📬 ${BOLD}Inbound Port 25 SMTP:${RESET}   ${CYAN}${MAIL_FQDN} (Listening on 0.0.0.0:25)${RESET}"
-echo -e "  ❄️ ${BOLD}Preservation Vault:${RESET}     ${PURPLE}Active (24h Cold Lossless Compression)${RESET}\n"
+echo -e "  🌐 ${BOLD}Web Dashboard (HTTPS):${RESET}   ${CYAN}${WEB_URL}${RESET}"
+echo -e "  📬 ${BOLD}Inbound Port 25 SMTP:${RESET}    ${CYAN}${MAIL_FQDN} (Listening on 0.0.0.0:25)${RESET}"
+echo -e "  📤 ${BOLD}Outbound Port 587 SMTP:${RESET}   ${CYAN}${MAIL_FQDN}:587 (Auth via Crown API Key)${RESET}"
+echo -e "  ❄️ ${BOLD}Preservation Vault:${RESET}      ${PURPLE}Active (24h Cold Lossless Compression)${RESET}\n"
 
 echo -e "${BOLD}Helpful Management Commands:${RESET}"
 echo -e "  • Interactive CLI:   ${BOLD}./install.sh${RESET}"

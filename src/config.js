@@ -13,6 +13,7 @@ export const INITIAL_DOMAINS = rawDomains
 
 export const HTTP_PORT = parseInt(process.env.PORT || process.env.HTTP_PORT || '3000', 10);
 export const SMTP_PORT = parseInt(process.env.SMTP_PORT || '25', 10);
+export const OUTBOUND_SMTP_PORT = parseInt(process.env.OUTBOUND_SMTP_PORT || '587', 10);
 export const DATA_DIR = process.env.DATA_DIR || path.resolve(process.cwd(), 'data');
 export const MAX_MESSAGE_SIZE = parseInt(process.env.MAX_MESSAGE_SIZE || '25000000', 10); // 25 MB
 

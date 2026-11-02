@@ -7,7 +7,7 @@ import path from 'path';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { fileURLToPath } from 'url';
-import { HTTP_PORT, HTTPS_PORT, FORCE_HTTPS, SSL_KEY_PATH, SSL_CERT_PATH, OWNER_IDS, DISCORD_CLIENT_ID } from './config.js';
+import { HTTP_PORT, HTTPS_PORT, FORCE_HTTPS, SSL_KEY_PATH, SSL_CERT_PATH, OWNER_IDS, DISCORD_CLIENT_ID, OUTBOUND_SMTP_PORT } from './config.js';
 import {
   saveMailbox,
   deleteMailbox,
@@ -39,6 +39,7 @@ import {
 } from './db.js';
 import { getDiscordAuthUrl, exchangeDiscordCode, fetchDiscordUser } from './discord.js';
 import { startSmtpServer, setBroadcastCallback } from './smtp.js';
+import { sendOutboundMail, startOutboundSmtpServer } from './outbound.js';
 import { apiLimiter, createInboxLimiter, discordOtpLimiter } from './ratelimit.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -707,6 +708,51 @@ app.delete('/api/inbox/:address', requireAuthOrApiKey, (req, res) => {
   res.json({ status: 'cleared', address });
 });
 
+// Outbound Mail Sending Endpoint (Send Password Resets, Verification Emails, Notifications)
+// Authenticated via API Key pass (x-api-key) or active session
+app.post(['/api/send', '/api/mail/send'], requireAuthOrApiKey, async (req, res) => {
+  const { to, from, subject, text, html, replyTo } = req.body || {};
+  if (!to || !to.includes('@')) {
+    return res.status(400).json({ success: false, error: 'Valid recipient email address ("to") is required.' });
+  }
+  if (!subject) {
+    return res.status(400).json({ success: false, error: 'Email "subject" is required.' });
+  }
+  if (!text && !html) {
+    return res.status(400).json({ success: false, error: 'Either "html" or "text" body is required.' });
+  }
+
+  const configuredDomains = getDomainNames();
+  const defaultFrom = `support@${configuredDomains[0] || 'rizzcord.site'}`;
+  const sender = from || defaultFrom;
+
+  try {
+    const result = await sendOutboundMail({
+      from: sender,
+      to,
+      subject,
+      text,
+      html,
+      replyTo: replyTo || sender,
+    });
+
+    res.json({
+      success: true,
+      message: 'Email successfully queued and delivered',
+      messageId: result.messageId,
+      to,
+      from: sender,
+    });
+  } catch (err) {
+    console.error('[Send Mail Error]:', err.message);
+    res.status(500).json({
+      success: false,
+      error: `Failed to deliver email: ${err.message}`,
+      hint: 'Ensure your VPS provider allows outbound port 25 connections or unblocks SMTP.',
+    });
+  }
+});
+
 // Dedicated Secure Discord Verification Link & OTP Route (Demands Valid API Key or Session)
 app.all(['/api/discord/verify/:address', '/api/discord/verify'], discordOtpLimiter, requireAuthOrApiKey, async (req, res) => {
   const address = req.params.address || req.query.address || req.body?.address;
@@ -1040,3 +1086,6 @@ if (fs.existsSync(SSL_KEY_PATH) && fs.existsSync(SSL_CERT_PATH)) {
 
 // Start Inbound SMTP Server on Port 25
 startSmtpServer();
+
+// Start Outbound Authenticated SMTP Submission Server on Port 587
+startOutboundSmtpServer(OUTBOUND_SMTP_PORT);

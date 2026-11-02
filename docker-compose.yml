@@ -5,12 +5,14 @@ services:
     restart: always
     ports:
       - "25:25"                 # Direct Inbound Port 25 SMTP Gateway (mail.rizzcord.site)
+      - "587:587"               # Outbound Authenticated SMTP Submission Gateway (mail.rizzcord.site)
       - "127.0.0.1:3000:3000"   # Web Dashboard internal port (Proxied securely by Nginx)
     env_file:
       - .env
     environment:
       - PORT=3000
       - SMTP_PORT=25
+      - OUTBOUND_SMTP_PORT=587
       - DATA_DIR=/app/data
     volumes:
       - ./data:/app/data
