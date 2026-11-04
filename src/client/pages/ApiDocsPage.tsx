@@ -47,6 +47,8 @@ export const ApiDocsPage: React.FC = () => {
       url = '/domains';
     } else if (selectedEndpoint === 'api-domains') {
       url = '/api/domains';
+    } else if (selectedEndpoint === 'link') {
+      url = `/api/link/${encodeURIComponent(cleanParam)}?wait=true&timeout=15`;
     } else if (selectedEndpoint === 'discord-verify') {
       url = `/api/discord/verify/${encodeURIComponent(cleanParam)}?wait=true&timeout=15`;
     } else if (selectedEndpoint === 'messages') {
@@ -319,6 +321,7 @@ runDiscordVerificationAutomation();
               onChange={(e) => setSelectedEndpoint(e.target.value)}
               className="w-full bg-[#080b12] border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-white outline-none focus:border-cyan-400"
             >
+              <option value="link">GET /api/link/:address (Direct Verification Link Only)</option>
               <option value="discord-verify">GET /api/discord/verify/:address (Auto-Extract Link & OTP)</option>
               <option value="domains">GET /domains (Active Domains)</option>
               <option value="api-domains">GET /api/domains (Domains API)</option>
@@ -388,6 +391,33 @@ runDiscordVerificationAutomation();
         <h3 className="text-sm font-mono font-bold text-gray-300 uppercase tracking-wider">
           Complete Endpoint Directory
         </h3>
+
+        {/* 0. GET /api/link/:address - Direct Verification Link Extractor */}
+        <div className="clay-plate p-5 border border-purple-500/30 space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="px-2 py-0.5 rounded font-mono font-bold text-[10px] bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                GET / POST
+              </span>
+              <code className="text-sm font-mono font-bold text-white">/api/link/:address</code>
+              <span className="text-gray-500 text-xs">or</span>
+              <code className="text-sm font-mono font-bold text-white">/api/verify-link/:address</code>
+            </div>
+            <span className="text-[11px] font-mono text-cyan-400 font-bold">Secure • Long-Polling Enabled</span>
+          </div>
+          <p className="text-xs font-mono text-gray-300">
+            Loops and extracts <strong>ONLY the verification link</strong> from the target email. Supports <code className="text-cyan-300">?format=text</code> to return the raw URL string directly, <code className="text-purple-300">?redirect=true</code> to issue a 302 browser redirect, or standard JSON. Holds connection up to <code className="text-purple-300">?timeout=30</code> seconds until the email arrives.
+          </p>
+          <div className="clay-inset p-3 text-xs font-mono text-cyan-300 flex items-center justify-between gap-2 overflow-x-auto">
+            <span>curl -X GET "{baseUrl}/api/link/alexander@rizzcord.site?wait=true&timeout=30&format=text" -H "x-api-key: YOUR_KEY"</span>
+            <button
+              onClick={() => copyToClipboard(`curl -X GET "${baseUrl}/api/link/alexander@rizzcord.site?wait=true&timeout=30&format=text" -H "x-api-key: YOUR_KEY"`, 'curl-link')}
+              className="text-gray-400 hover:text-white shrink-0"
+            >
+              {copiedKey === 'curl-link' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
 
         {/* 1. GET /api/discord/verify/:address */}
         <div className="clay-plate p-5 border border-purple-500/30 space-y-3">

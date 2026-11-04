@@ -2,6 +2,7 @@ import path from 'path';
 import crypto from 'crypto';
 import zlib from 'zlib';
 import { DATA_DIR, INITIAL_DOMAINS, OWNER_IDS } from './config.js';
+import { extractDiscordVerification } from './discord.js';
 
 let db = null;
 let memoryStore = {
@@ -452,7 +453,7 @@ export function getMessages(inboxAddress) {
 
     const stmt = db.prepare(`
       SELECT id, inbox_address, from_address, from_name, to_address,
-             subject, snippet, discord_code, discord_url, received_at, is_read, is_compressed,
+             subject, snippet, text_body, html_body, discord_code, discord_url, received_at, is_read, is_compressed,
              LENGTH(attachments_json) > 2 as has_attachments
       FROM messages
       WHERE inbox_address = ?
@@ -460,7 +461,42 @@ export function getMessages(inboxAddress) {
       LIMIT 150
     `);
     const rows = stmt.all(cleanInbox);
-    return rows;
+    return rows.map((r) => {
+      let textBody = r.text_body || '';
+      let htmlBody = r.html_body || '';
+      if (r.is_compressed === 1) {
+        textBody = decompressText(textBody);
+        htmlBody = decompressText(htmlBody);
+      }
+
+      let dCode = r.discord_code;
+      let dUrl = r.discord_url;
+
+      // On-the-fly heal: Fix previously misdetected hex colors (#000000) or missing verification URLs
+      if (dCode === '000000' || (!dUrl && (htmlBody || textBody))) {
+        const extracted = extractDiscordVerification(r.subject, textBody, htmlBody);
+        if (extracted.discordUrl || (extracted.discordCode && extracted.discordCode !== '000000')) {
+          dCode = extracted.discordCode;
+          dUrl = extracted.discordUrl;
+          try {
+            db.prepare('UPDATE messages SET discord_code = ?, discord_url = ? WHERE id = ?').run(dCode, dUrl, r.id);
+          } catch {}
+        } else if (dCode === '000000') {
+          dCode = null;
+          try {
+            db.prepare('UPDATE messages SET discord_code = NULL WHERE id = ?').run(r.id);
+          } catch {}
+        }
+      }
+
+      return {
+        ...r,
+        text_body: textBody,
+        html_body: htmlBody,
+        discord_code: dCode,
+        discord_url: dUrl,
+      };
+    });
   }
 
   const mb = memoryStore.mailboxes.get(cleanInbox);
@@ -488,11 +524,36 @@ export function getMessageById(inboxAddress, msgId) {
       rawMime = decompressText(rawMime);
     }
 
+    let dCode = row.discord_code;
+    let dUrl = row.discord_url;
+
+    // On-the-fly heal
+    if (dCode === '000000' || (!dUrl && (htmlBody || textBody))) {
+      const extracted = extractDiscordVerification(row.subject, textBody, htmlBody);
+      if (extracted.discordUrl || (extracted.discordCode && extracted.discordCode !== '000000')) {
+        dCode = extracted.discordCode;
+        dUrl = extracted.discordUrl;
+        try {
+          db.prepare('UPDATE messages SET discord_code = ?, discord_url = ? WHERE id = ?').run(dCode, dUrl, row.id);
+        } catch {}
+      } else if (dCode === '000000') {
+        dCode = null;
+        try {
+          db.prepare('UPDATE messages SET discord_code = NULL WHERE id = ?').run(row.id);
+        } catch {}
+      }
+    }
+
+    const sanitizedMime = maskIpAddresses(rawMime);
+
     return {
       ...row,
       text_body: textBody,
       html_body: htmlBody,
-      raw_mime: maskIpAddresses(rawMime),
+      raw_mime: sanitizedMime,
+      raw_eml: sanitizedMime,
+      discord_code: dCode,
+      discord_url: dUrl,
       attachments: JSON.parse(row.attachments_json || '[]'),
       headers: sanitizeHeaders(JSON.parse(row.headers_json || '{}')),
     };
@@ -509,11 +570,13 @@ export function getMessageById(inboxAddress, msgId) {
       htmlBody = decompressText(htmlBody);
       rawMime = decompressText(rawMime);
     }
+    const sanitizedMime = maskIpAddresses(rawMime);
     return {
       ...found,
       text_body: textBody,
       html_body: htmlBody,
-      raw_mime: maskIpAddresses(rawMime),
+      raw_mime: sanitizedMime,
+      raw_eml: sanitizedMime,
       headers: sanitizeHeaders(found.headers || {}),
     };
   }
@@ -547,13 +610,52 @@ export function getLatestDiscordVerification(inboxAddress) {
   const cleanInbox = inboxAddress.toLowerCase().trim();
   if (db) {
     const stmt = db.prepare(`
-      SELECT id, subject, from_address, discord_code, discord_url, received_at
+      SELECT id, subject, from_address, text_body, html_body, discord_code, discord_url, received_at, is_compressed
       FROM messages
-      WHERE inbox_address = ? AND (discord_code IS NOT NULL OR discord_url IS NOT NULL)
+      WHERE inbox_address = ?
       ORDER BY received_at DESC
-      LIMIT 1
+      LIMIT 10
     `);
-    return stmt.get(cleanInbox);
+    const rows = stmt.all(cleanInbox);
+    for (const r of rows) {
+      let dCode = r.discord_code;
+      let dUrl = r.discord_url;
+      let textBody = r.text_body || '';
+      let htmlBody = r.html_body || '';
+
+      if (r.is_compressed === 1) {
+        textBody = decompressText(textBody);
+        htmlBody = decompressText(htmlBody);
+      }
+
+      if (dCode === '000000' || (!dUrl && (htmlBody || textBody))) {
+        const extracted = extractDiscordVerification(r.subject, textBody, htmlBody);
+        if (extracted.discordUrl || (extracted.discordCode && extracted.discordCode !== '000000')) {
+          dCode = extracted.discordCode;
+          dUrl = extracted.discordUrl;
+          try {
+            db.prepare('UPDATE messages SET discord_code = ?, discord_url = ? WHERE id = ?').run(dCode, dUrl, r.id);
+          } catch {}
+        } else if (dCode === '000000') {
+          dCode = null;
+          try {
+            db.prepare('UPDATE messages SET discord_code = NULL WHERE id = ?').run(r.id);
+          } catch {}
+        }
+      }
+
+      if (dUrl || dCode) {
+        return {
+          id: r.id,
+          subject: r.subject,
+          from_address: r.from_address,
+          discord_code: dCode,
+          discord_url: dUrl,
+          received_at: r.received_at,
+        };
+      }
+    }
+    return null;
   }
   return memoryStore.messages.find(
     (m) => m.inbox_address === cleanInbox && (m.discord_code || m.discord_url)

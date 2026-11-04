@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mail, RefreshCw, Trash2, QrCode, Copy, Check, Sparkles, Plus, Clock, Snowflake, ShieldCheck, Zap, Download } from 'lucide-react';
+import { Mail, RefreshCw, Trash2, QrCode, Copy, Check, Sparkles, Plus, Clock, Snowflake, ShieldCheck, Zap, Download, ExternalLink } from 'lucide-react';
 import { UserProfile, UserMailbox, EmailMessage, DiscordVerification, DomainInfo } from '../types';
 
 interface MailboxPageProps {
@@ -73,6 +73,23 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
     } catch {}
   };
 
+  // Fetch full decompressed message details (guarantees HTML, raw EML, and verification link)
+  const fetchFullMessage = async (addr: string, msg: EmailMessage) => {
+    setSelectedMessage(msg);
+    try {
+      const res = await fetch(`/api/messages/${encodeURIComponent(addr)}/${msg.id}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.message) {
+          setSelectedMessage((prev) => ({
+            ...prev,
+            ...data.message,
+          }));
+        }
+      }
+    } catch {}
+  };
+
   // Load Messages for current address
   const fetchMessages = async (addr: string) => {
     if (!addr) {
@@ -86,8 +103,16 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
         const data = await res.json();
         const list: EmailMessage[] = data.messages || [];
         setMessages(list);
-        if (list.length > 0 && !selectedMessage) {
-          setSelectedMessage(list[0]);
+        if (list.length > 0) {
+          setSelectedMessage((prev) => {
+            if (!prev) {
+              fetchFullMessage(addr, list[0]);
+              return list[0];
+            }
+            const match = list.find((m) => m.id === prev.id) || list[0];
+            fetchFullMessage(addr, match);
+            return match;
+          });
         }
       }
     } catch {}
@@ -101,13 +126,19 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
       }
     } catch {}
 
-    // Check Discord OTP
+    // Check Discord OTP & Verification Link
     try {
       const discordRes = await fetch(`/api/discord/${encodeURIComponent(addr)}?wait=false`);
       if (discordRes.ok) {
         const dData = await discordRes.json();
-        if (dData.found && dData.discord_code) {
-          setDiscordOtp(dData);
+        const code = dData.code || dData.discord_code || null;
+        const link = dData.link || dData.discord_url || dData.verification_url || null;
+        if (dData.found && (code || link)) {
+          setDiscordOtp({
+            ...dData,
+            discord_code: code && code !== '000000' ? code : null,
+            discord_url: link,
+          });
         } else {
           setDiscordOtp(null);
         }
@@ -540,9 +571,9 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
         </div>
       </div>
 
-      {/* 4. DISCORD VERIFICATION OTP BANNER */}
-      {discordOtp?.discord_code && (
-        <div className="clay-plate p-4 sm:p-5 discord-otp-glow relative overflow-hidden bg-purple-950/20 border border-purple-500/40">
+      {/* 4. DISCORD VERIFICATION OTP & LINK BANNER */}
+      {discordOtp && (discordOtp.discord_code || discordOtp.discord_url) && (
+        <div className="clay-plate p-4 sm:p-5 discord-otp-glow relative overflow-hidden bg-purple-950/20 border border-purple-500/40 rounded-2xl">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center space-x-3.5">
               <div className="w-11 h-11 rounded-2xl bg-purple-600 flex items-center justify-center text-white shadow-lg shadow-purple-600/40 shrink-0">
@@ -550,32 +581,52 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
               </div>
               <div>
                 <span className="text-[10px] font-mono uppercase tracking-widest text-purple-300 font-bold">
-                  Discord Verification Detected
+                  {discordOtp.discord_code ? 'Discord Verification Code Detected' : 'Discord Verification Link Ready'}
                 </span>
-                <div className="text-xl sm:text-2xl font-mono font-black tracking-widest text-white mt-0.5">
-                  {discordOtp.discord_code}
-                </div>
+                {discordOtp.discord_code ? (
+                  <div className="text-xl sm:text-2xl font-mono font-black tracking-widest text-white mt-0.5">
+                    {discordOtp.discord_code}
+                  </div>
+                ) : (
+                  <div className="text-xs sm:text-sm font-mono font-bold text-gray-200 mt-0.5 truncate max-w-sm sm:max-w-md">
+                    One-click verification link extracted & ready to use
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => copyToClipboard(discordOtp.discord_code || '', 'otp')}
-                className="clay-btn-discord px-4 py-2 text-xs font-mono font-bold flex items-center gap-1.5"
-              >
-                {copiedKey === 'otp' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                <span>{copiedKey === 'otp' ? 'Copied Code!' : 'Copy Code'}</span>
-              </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {discordOtp.discord_code && (
+                <button
+                  onClick={() => copyToClipboard(discordOtp.discord_code || '', 'otp')}
+                  className="clay-btn-discord px-4 py-2 text-xs font-mono font-bold flex items-center gap-1.5"
+                >
+                  {copiedKey === 'otp' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>{copiedKey === 'otp' ? 'Copied Code!' : 'Copy Code'}</span>
+                </button>
+              )}
 
               {discordOtp.discord_url && (
-                <a
-                  href={discordOtp.discord_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="clay-btn px-4 py-2 text-xs font-mono text-purple-300 hover:text-white"
-                >
-                  Click Verify Link
-                </a>
+                <>
+                  <button
+                    onClick={() => copyToClipboard(discordOtp.discord_url || '', 'otp_link')}
+                    className="clay-btn-discord px-4 py-2 text-xs font-mono font-bold flex items-center gap-1.5"
+                    title="Copy full verification link to clipboard"
+                  >
+                    {copiedKey === 'otp_link' ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                    <span>{copiedKey === 'otp_link' ? 'Copied Link!' : 'Copy Link'}</span>
+                  </button>
+
+                  <a
+                    href={discordOtp.discord_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="clay-btn px-4 py-2 text-xs font-mono text-purple-300 hover:text-white flex items-center gap-1.5"
+                  >
+                    <span>Open Verify Link</span>
+                    <ExternalLink className="w-4 h-4" />
+                  </a>
+                </>
               )}
             </div>
           </div>
@@ -613,7 +664,7 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
             {filteredMessages.map((msg) => (
               <div
                 key={msg.id}
-                onClick={() => setSelectedMessage(msg)}
+                onClick={() => fetchFullMessage(currentAddress, msg)}
                 className={`p-3 rounded-2xl cursor-pointer transition-all border ${
                   selectedMessage?.id === msg.id
                     ? 'bg-cyan-950/40 border-cyan-500/40 shadow-sm'
@@ -626,7 +677,7 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
                 </div>
                 <div className="text-xs font-mono font-bold text-white truncate">{msg.subject || '(No Subject)'}</div>
                 <div className="text-[11px] font-mono text-gray-500 truncate mt-1">
-                  {msg.text_body?.slice(0, 70) || '(Empty Body)'}
+                  {msg.snippet || msg.text_body?.slice(0, 70) || (msg.html_body ? 'Rich HTML Content' : '(Empty Body)')}
                 </div>
               </div>
             ))}
@@ -674,6 +725,55 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
                   <span className="text-cyan-300 font-bold">{selectedMessage.from_name || selectedMessage.from_address}</span>
                   <span className="text-gray-500"> &lt;{selectedMessage.from_address}&gt;</span>
                 </div>
+
+                {/* Instant Action Bar for Verification Links & Codes inside this specific email */}
+                {(selectedMessage.discord_url || (selectedMessage.discord_code && selectedMessage.discord_code !== '000000')) && (
+                  <div className="clay-card p-2.5 sm:p-3 border border-purple-500/30 bg-purple-950/30 rounded-xl flex flex-wrap items-center justify-between gap-2 mt-2">
+                    <div className="flex items-center gap-2">
+                      <Zap className="w-4 h-4 text-purple-400 shrink-0" />
+                      <span className="text-xs font-mono font-bold text-purple-200">
+                        {selectedMessage.discord_url ? 'Verification Link Detected' : 'Verification Code Detected'}
+                      </span>
+                      {selectedMessage.discord_code && selectedMessage.discord_code !== '000000' && (
+                        <span className="bg-purple-600/40 text-purple-200 text-xs font-mono font-black px-2 py-0.5 rounded-lg border border-purple-400/30">
+                          {selectedMessage.discord_code}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {selectedMessage.discord_code && selectedMessage.discord_code !== '000000' && (
+                        <button
+                          onClick={() => copyToClipboard(selectedMessage.discord_code || '', `msg_code_${selectedMessage.id}`)}
+                          className="clay-btn-discord px-3 py-1.5 text-xs font-mono font-bold flex items-center gap-1.5"
+                        >
+                          {copiedKey === `msg_code_${selectedMessage.id}` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{copiedKey === `msg_code_${selectedMessage.id}` ? 'Copied Code!' : 'Copy Code'}</span>
+                        </button>
+                      )}
+                      {selectedMessage.discord_url && (
+                        <>
+                          <button
+                            onClick={() => copyToClipboard(selectedMessage.discord_url || '', `msg_link_${selectedMessage.id}`)}
+                            className="clay-btn-discord px-3 py-1.5 text-xs font-mono font-bold flex items-center gap-1.5"
+                            title="Copy direct verification link"
+                          >
+                            {copiedKey === `msg_link_${selectedMessage.id}` ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                            <span>{copiedKey === `msg_link_${selectedMessage.id}` ? 'Copied Link!' : 'Copy Link'}</span>
+                          </button>
+                          <a
+                            href={selectedMessage.discord_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="clay-btn px-3 py-1.5 text-xs font-mono text-purple-300 hover:text-white flex items-center gap-1"
+                          >
+                            <span>Open Link</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Viewer Tabs */}
@@ -711,8 +811,8 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
                     <iframe
                       srcDoc={selectedMessage.html_body}
                       title="Email Content"
-                      sandbox="allow-popups allow-same-origin"
-                      className="w-full h-full border-none bg-white rounded-xl text-black"
+                      sandbox="allow-popups allow-popups-to-escape-sandbox allow-same-origin"
+                      className="w-full h-full min-h-[440px] border-none bg-white rounded-xl text-black"
                     />
                   ) : (
                     <pre className="text-xs font-mono text-gray-300 whitespace-pre-wrap select-all">
@@ -729,7 +829,7 @@ export const MailboxPage: React.FC<MailboxPageProps> = ({
 
                 {messageViewTab === 'raw' && (
                   <pre className="text-xs font-mono text-cyan-300 whitespace-pre-wrap select-all">
-                    {selectedMessage.raw_eml || 'Raw EML not available'}
+                    {selectedMessage.raw_eml || selectedMessage.raw_mime || 'Raw EML not available'}
                   </pre>
                 )}
               </div>

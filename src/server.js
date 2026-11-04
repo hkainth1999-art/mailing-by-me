@@ -774,12 +774,16 @@ app.all(['/api/discord/verify/:address', '/api/discord/verify'], discordOtpLimit
 
   const existing = getLatestDiscordVerification(cleanAddr);
   if (existing) {
+    const link = existing.discord_url || null;
     return res.json({
       success: true,
       found: true,
       address: cleanAddr,
-      verification_url: existing.discord_url,
-      discord_code: existing.discord_code,
+      link,
+      verification_url: link,
+      discord_url: link,
+      code: existing.discord_code || null,
+      discord_code: existing.discord_code || null,
       subject: existing.subject,
       from_address: existing.from_address,
       received_at: existing.received_at,
@@ -796,7 +800,7 @@ app.all(['/api/discord/verify/:address', '/api/discord/verify'], discordOtpLimit
   }
 
   let resolved = false;
-  const checkInterval = 1000;
+  const checkInterval = 800;
   const startTime = Date.now();
 
   const timer = setInterval(() => {
@@ -804,12 +808,16 @@ app.all(['/api/discord/verify/:address', '/api/discord/verify'], discordOtpLimit
     if (found) {
       resolved = true;
       clearInterval(timer);
+      const link = found.discord_url || null;
       return res.json({
         success: true,
         found: true,
         address: cleanAddr,
-        verification_url: found.discord_url,
-        discord_code: found.discord_code,
+        link,
+        verification_url: link,
+        discord_url: link,
+        code: found.discord_code || null,
+        discord_code: found.discord_code || null,
         subject: found.subject,
         from_address: found.from_address,
         received_at: found.received_at,
@@ -844,10 +852,14 @@ app.get('/api/discord/:address', discordOtpLimiter, requireAuthOrApiKey, async (
 
   const existing = getLatestDiscordVerification(cleanAddr);
   if (existing) {
+    const link = existing.discord_url || null;
     return res.json({
       found: true,
-      discord_code: existing.discord_code,
-      discord_url: existing.discord_url,
+      link,
+      discord_url: link,
+      verification_url: link,
+      code: existing.discord_code || null,
+      discord_code: existing.discord_code || null,
       subject: existing.subject,
       from_address: existing.from_address,
       received_at: existing.received_at,
@@ -862,7 +874,7 @@ app.get('/api/discord/:address', discordOtpLimiter, requireAuthOrApiKey, async (
   }
 
   let resolved = false;
-  const checkInterval = 1000;
+  const checkInterval = 800;
   const startTime = Date.now();
 
   const timer = setInterval(() => {
@@ -870,10 +882,14 @@ app.get('/api/discord/:address', discordOtpLimiter, requireAuthOrApiKey, async (
     if (found) {
       resolved = true;
       clearInterval(timer);
+      const link = found.discord_url || null;
       return res.json({
         found: true,
-        discord_code: found.discord_code,
-        discord_url: found.discord_url,
+        link,
+        discord_url: link,
+        verification_url: link,
+        code: found.discord_code || null,
+        discord_code: found.discord_code || null,
         subject: found.subject,
         from_address: found.from_address,
         received_at: found.received_at,
@@ -896,6 +912,111 @@ app.get('/api/discord/:address', discordOtpLimiter, requireAuthOrApiKey, async (
     }
   });
 });
+
+// Dedicated Fast Verification Link Extractor Route (Loops/Waits for email and returns ONLY the link)
+// Can return raw plain-text URL (for easy bash/Python/Discord bots) or JSON or HTTP 302 Redirect!
+app.all(
+  ['/api/link/:address', '/api/link', '/api/verify-link/:address', '/api/verify-link'],
+  discordOtpLimiter,
+  requireAuthOrApiKey,
+  async (req, res) => {
+    const address = req.params.address || req.query.address || req.body?.address;
+    if (!address || !address.includes('@')) {
+      return res.status(400).json({
+        success: false,
+        error: 'Valid mailbox address is required (e.g. /api/link/user@rizzcord.site or ?address=user@rizzcord.site)',
+      });
+    }
+
+    const cleanAddr = address.toLowerCase().trim();
+    const shouldWait = req.query.wait !== 'false' && req.body?.wait !== false; // Default: wait/loop!
+    const timeoutSec = Math.min(60, Math.max(3, parseInt(req.query.timeout || req.body?.timeout || '30', 10)));
+    const format = (req.query.format || req.body?.format || '').toLowerCase();
+    const wantText = format === 'text' || req.query.text === 'true' || req.headers.accept === 'text/plain';
+    const wantRedirect = req.query.redirect === 'true' || req.body?.redirect === true;
+
+    // Auto-register silently if owner or api key
+    if (req.user?.is_owner || req.user?.from_api) {
+      saveMailbox(cleanAddr, req.user.user_id, req.user.username, true, true);
+    }
+
+    // Helper to send response in requested format
+    const respondWithLink = (item) => {
+      const link = item.discord_url || null;
+      if (!link) {
+        if (wantText) return res.status(404).type('text/plain').send('');
+        return res.status(404).json({ success: false, found: false, error: 'No verification link found in email' });
+      }
+
+      if (wantRedirect) {
+        return res.redirect(link);
+      }
+
+      if (wantText) {
+        return res.type('text/plain').send(link);
+      }
+
+      return res.json({
+        success: true,
+        found: true,
+        address: cleanAddr,
+        link,
+        url: link,
+        code: item.discord_code || null,
+        subject: item.subject,
+        from_address: item.from_address,
+        received_at: item.received_at,
+      });
+    };
+
+    const existing = getLatestDiscordVerification(cleanAddr);
+    if (existing && existing.discord_url) {
+      return respondWithLink(existing);
+    }
+
+    if (!shouldWait) {
+      if (wantText) return res.status(404).type('text/plain').send('');
+      return res.status(404).json({
+        success: false,
+        found: false,
+        address: cleanAddr,
+        error: 'No verification link found yet for this address.',
+      });
+    }
+
+    // Looping / polling until email arrives
+    let isFinished = false;
+    const startTime = Date.now();
+    const checkInterval = 800;
+
+    const timer = setInterval(() => {
+      const found = getLatestDiscordVerification(cleanAddr);
+      if (found && found.discord_url) {
+        isFinished = true;
+        clearInterval(timer);
+        return respondWithLink(found);
+      }
+
+      if (Date.now() - startTime >= timeoutSec * 1000) {
+        isFinished = true;
+        clearInterval(timer);
+        if (wantText) return res.status(408).type('text/plain').send('');
+        return res.status(408).json({
+          success: false,
+          found: false,
+          address: cleanAddr,
+          error: `Timed out waiting for verification email after ${timeoutSec}s.`,
+        });
+      }
+    }, checkInterval);
+
+    req.on('close', () => {
+      if (!isFinished) {
+        clearInterval(timer);
+      }
+    });
+  }
+);
 
 // --- Admin Panel Endpoints (Owner ID Required, Zero Credential Leaks) ---
 

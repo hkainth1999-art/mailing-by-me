@@ -1,45 +1,92 @@
 import { DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET, DISCORD_REDIRECT_URI } from './config.js';
 
+function cleanUrl(url) {
+  if (!url) return null;
+  return url
+    .replace(/&amp;/g, '&')
+    .replace(/&#3D;/gi, '=')
+    .replace(/["'\s;,.)\]>]+$/, '')
+    .trim();
+}
+
+/**
+ * Robust extractor for verification links and OTP codes.
+ * Supports Discord, SendGrid click redirects, and transactional email confirmation buttons.
+ * Strictly prevents false positives like hex colors (#000000).
+ */
 export function extractDiscordVerification(subject, textBody, htmlBody) {
-  const combined = `${subject || ''}\n${textBody || ''}\n${htmlBody || ''}`;
+  const html = htmlBody || '';
+  const text = textBody || '';
+  const raw = `${text}\n${html}`;
 
-  // 1. Extract 6-digit verification code
-  let discordCode = null;
-  const codePatterns = [
-    /verification\s+code\s+is\s*:?\s*(\d{6})/i,
-    /security\s+code\s*[:\-]?\s*(\d{6})/i,
-    /your\s+code\s*[:\-]?\s*(\d{6})/i,
-    /\bcode\s*[:\-]\s*(\d{6})\b/i,
-    /\b(\d{6})\b/,
-  ];
+  // 1. URL Extraction
+  let discordUrl = null;
 
-  for (const pattern of codePatterns) {
-    const match = combined.match(pattern);
-    if (match && match[1]) {
-      discordCode = match[1];
-      break;
+  // Priority A: SendGrid or direct Discord click tracking (e.g. click.discord.com/ls/click)
+  const discordClickMatch = raw.match(/https?:\/\/(?:click\.)?discord(?:app)?\.com\/ls\/click\?[^\s"'<>]+/i);
+  if (discordClickMatch) {
+    discordUrl = cleanUrl(discordClickMatch[0]);
+  } else {
+    // Priority B: Discord direct verify token URL
+    const discordVerifyMatch = raw.match(/https?:\/\/(?:www\.)?discord(?:app)?\.com\/verify[^\s"'<>]+/i);
+    if (discordVerifyMatch) {
+      discordUrl = cleanUrl(discordVerifyMatch[0]);
+    } else {
+      // Priority C: Anchor tag with "Verify", "Confirm", or "Activate" button text
+      const anchorRegex = /<a\b[^>]*\bhref=["']([^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+      let m;
+      while ((m = anchorRegex.exec(html)) !== null) {
+        const href = m[1];
+        const linkText = m[2].replace(/<[^>]+>/g, '').trim().toLowerCase();
+        if (!href.startsWith('http')) continue;
+        if (/unsubscribe|preferences|privacy|terms|twitter|facebook|instagram/i.test(href)) continue;
+
+        if (/verify|confirm|activate|validation/i.test(linkText)) {
+          discordUrl = cleanUrl(href);
+          break;
+        }
+      }
+
+      // Priority D: General verification URL in text or HTML
+      if (!discordUrl) {
+        const generalMatch = raw.match(/https?:\/\/[^\s"'<>]+(?:verify|verification|confirm|activate|token=|auth\/verify)[^\s"'<>]+/i);
+        if (generalMatch) {
+          discordUrl = cleanUrl(generalMatch[0]);
+        }
+      }
     }
   }
 
-  // 2. Extract Discord verification URL (clicks, token links, verify redirects)
-  let discordUrl = null;
-  const urlPatterns = [
-    /https?:\/\/(?:click\.)?discord(?:app)?\.com\/ls\/click\?[^\s"'<>]+/gi,
-    /https?:\/\/discord(?:app)?\.com\/verify[^\s"'<>]+/gi,
-    /https?:\/\/(?:click\.)?discord(?:app)?\.com\/[^\s"'<>]+/gi,
-    /https?:\/\/dis\.gd\/[^\s"'<>]+/gi,
-    /href=["'](https?:\/\/[^"']*(?:discord|dis\.gd)[^"']*)["']/i,
+  // 2. Code Extraction (MUST NOT MATCH HEX COLORS like #000000 or #ffffff)
+  let cleanText = text;
+  if (!cleanText && html) {
+    cleanText = html
+      .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ');
+  }
+
+  // Strip hex color codes so #000000 or #ffffff are NEVER mistaken for OTP codes
+  cleanText = cleanText.replace(/#[0-9a-fA-F]{3,8}\b/g, ' ');
+
+  const searchArea = `${subject || ''}\n${cleanText}`;
+  let discordCode = null;
+
+  const codePatterns = [
+    /(?:verification|security|confirmation|login|auth|otp|access)\s*(?:code|pin|number)?\s*(?:is\s*)?[:\-#]?\s*([0-9]{4,8})\b/i,
+    /(?:code|pin)\s*(?:is\s*)?[:\-#]\s*([0-9]{4,8})\b/i,
+    /(?:your|enter|use)\s*(?:the\s*)?(?:code|pin)\s*(?:is\s*)?[:\-]?\s*([0-9]{4,8})\b/i,
+    /\b([0-9]{6})\b/,
+    /\b([0-9]{3}[\s\-][0-9]{3})\b/,
   ];
 
-  for (const pattern of urlPatterns) {
-    const match = combined.match(pattern);
-    if (match) {
-      const raw = match[1] || match[0];
-      if (raw) {
-        discordUrl = raw
-          .replace(/&amp;/g, '&')
-          .replace(/[.,;:)\]>]+$/, '')
-          .trim();
+  for (const pattern of codePatterns) {
+    const match = searchArea.match(pattern);
+    if (match && match[1]) {
+      const code = match[1].replace(/[\s\-]/g, '');
+      // Exclude bogus repetitive codes like 000000, 111111 unless explicitly labeled
+      if (code !== '000000' && code !== '111111' && code.length >= 4 && code.length <= 8) {
+        discordCode = code;
         break;
       }
     }
